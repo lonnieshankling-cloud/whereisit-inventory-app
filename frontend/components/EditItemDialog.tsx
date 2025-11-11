@@ -140,8 +140,8 @@ export function EditItemDialog({ item, open, onOpenChange, onItemUpdated }: Edit
         description,
         quantity,
         tags: tagArray,
-        locationId: locationId && locationId !== "unplaced" ? parseInt(locationId, 10) : undefined,
-        containerId: containerId && containerId !== "none" ? parseInt(containerId, 10) : undefined,
+        locationId: locationId === "unplaced" ? null : parseInt(locationId, 10),
+        containerId: containerId === "none" ? null : parseInt(containerId, 10),
       });
 
       toast({

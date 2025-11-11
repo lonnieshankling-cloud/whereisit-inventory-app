@@ -6,7 +6,7 @@ import type { Item } from "./create";
 interface UpdateItemRequest {
   id: number;
   name?: string;
-  locationId?: number;
+  locationId?: number | null;
   containerId?: number | null;
   description?: string;
   photoUrl?: string;
