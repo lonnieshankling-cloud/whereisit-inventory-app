@@ -29,6 +29,8 @@ import {
 import { useToast } from "@/components/ui/use-toast";
 import { useBackend } from "@/lib/backend";
 import type { Location } from "~backend/location/create";
+import { compressBase64Image } from "@/lib/imageCompression";
+import { LazyImage } from "@/components/LazyImage";
 
 interface ManageContainersDialogProps {
   open: boolean;
@@ -203,7 +205,9 @@ export function ManageContainersDialog({ open, onClose, preselectedLocationId, o
       reader.onload = async (event) => {
         try {
           const base64String = event.target?.result as string;
-          const base64Data = base64String.split(",")[1];
+          
+          const compressedBase64 = await compressBase64Image(base64String);
+          const base64Data = compressedBase64.split(",")[1];
 
           const response = await backend.container.uploadPhoto({
             filename: file.name,
@@ -389,13 +393,25 @@ export function ManageContainersDialog({ open, onClose, preselectedLocationId, o
                               key={container.id}
                               className="flex items-center justify-between p-3 bg-white border border-gray-200 rounded-md"
                             >
-                              <div className="flex items-center gap-2">
-                                <Package className="h-4 w-4 text-gray-400" />
-                                <span className="font-medium text-foreground">
+                              <div className="flex items-center gap-3 flex-1 min-w-0">
+                                {container.photoUrl ? (
+                                  <div className="relative w-12 h-12 flex-shrink-0 rounded-md overflow-hidden border border-gray-200">
+                                    <LazyImage
+                                      src={container.photoUrl}
+                                      alt={container.name}
+                                      className="w-full h-full object-cover"
+                                    />
+                                  </div>
+                                ) : (
+                                  <div className="w-12 h-12 flex-shrink-0 rounded-md bg-gray-100 flex items-center justify-center">
+                                    <Package className="h-6 w-6 text-gray-400" />
+                                  </div>
+                                )}
+                                <span className="font-medium text-foreground truncate">
                                   {container.name}
                                 </span>
                               </div>
-                              <div className="flex items-center gap-1">
+                              <div className="flex items-center gap-1 flex-shrink-0">
                                 <Button
                                   variant="ghost"
                                   size="sm"
@@ -499,6 +515,7 @@ export function ManageContainersDialog({ open, onClose, preselectedLocationId, o
                 ref={fileInputRef}
                 type="file"
                 accept="image/*"
+                capture="environment"
                 onChange={handlePhotoSelect}
                 className="hidden"
               />
