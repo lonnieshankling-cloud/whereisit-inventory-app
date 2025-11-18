@@ -9,6 +9,11 @@ async function getClerkClient() {
   return createClerkClient({ secretKey: clerkSecretKey() });
 }
 
+async function verifyClerkToken(token: string) {
+  const { verifyToken } = await import("@clerk/backend");
+  return verifyToken(token, { secretKey: clerkSecretKey() });
+}
+
 interface AuthParams {
   authorization?: Header<"Authorization">;
   session?: Cookie<"session">;
@@ -28,8 +33,8 @@ export const auth = authHandler<AuthParams, AuthData>(
     }
 
     try {
+      const verifiedToken = await verifyClerkToken(token);
       const clerkClient = await getClerkClient();
-      const verifiedToken = await clerkClient.verifyToken(token);
 
       const user = await clerkClient.users.getUser(verifiedToken.sub);
       return {
