@@ -28,12 +28,9 @@ export const auth = authHandler<AuthParams, AuthData>(
     }
 
     try {
-      const { verifyToken } = await import("@clerk/backend");
-      const verifiedToken = await verifyToken(token, {
-        secretKey: clerkSecretKey(),
-      });
-
       const clerkClient = await getClerkClient();
+      const verifiedToken = await clerkClient.verifyToken(token);
+
       const user = await clerkClient.users.getUser(verifiedToken.sub);
       return {
         userID: user.id,
