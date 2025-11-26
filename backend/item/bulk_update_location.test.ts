@@ -1,6 +1,6 @@
-import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
-import { bulkUpdateLocation } from "./bulk_update_location";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { AuthData } from "../auth/auth";
+import { bulkUpdateLocation } from "./bulk_update_location";
 
 vi.mock("~encore/auth", () => ({
   getAuthData: vi.fn(),
@@ -55,8 +55,9 @@ describe("Bulk Update Location endpoint", () => {
 
     const updateCall = vi.mocked(db.queryRow).mock.calls[1];
     expect(updateCall[1]).toBe(789);
-    expect(updateCall[2]).toEqual([123, 456]);
-    expect(updateCall[3]).toBe(1);
+    expect(updateCall[2]).toBe(null);
+    expect(updateCall[3]).toEqual([123, 456]);
+    expect(updateCall[4]).toBe(1);
 
     expect(result).toEqual({ count: 2 });
   });
@@ -106,8 +107,9 @@ describe("Bulk Update Location endpoint", () => {
 
     const updateCall = vi.mocked(db.queryRow).mock.calls[1];
     expect(updateCall[1]).toBe(999);
-    expect(updateCall[2]).toEqual([100, 200, 300]);
-    expect(updateCall[3]).toBe(householdId);
+    expect(updateCall[2]).toBe(null);
+    expect(updateCall[3]).toEqual([100, 200, 300]);
+    expect(updateCall[4]).toBe(householdId);
   });
 
   test("should handle single item update", async () => {
@@ -120,8 +122,9 @@ describe("Bulk Update Location endpoint", () => {
 
     const updateCall = vi.mocked(db.queryRow).mock.calls[1];
     expect(updateCall[1]).toBe(111);
-    expect(updateCall[2]).toEqual([999]);
-    expect(updateCall[3]).toBe(1);
+    expect(updateCall[2]).toBe(null);
+    expect(updateCall[3]).toEqual([999]);
+    expect(updateCall[4]).toBe(1);
 
     expect(result).toEqual({ count: 1 });
   });

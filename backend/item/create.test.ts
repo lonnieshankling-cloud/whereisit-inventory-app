@@ -1,6 +1,6 @@
-import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
-import { create, type Item } from "./create";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { AuthData } from "../auth/auth";
+import { create, type Item } from "./create";
 
 vi.mock("~encore/auth", () => ({
   getAuthData: vi.fn(),
@@ -89,13 +89,14 @@ describe("Create Item endpoint", () => {
     expect(insertCall[1]).toBe("test-user-123");
     expect(insertCall[2]).toBe(1);
     expect(insertCall[3]).toBe(10);
-    expect(insertCall[4]).toBe("Test Item");
-    expect(insertCall[5]).toBe(null);
+    expect(insertCall[4]).toBe(null);
+    expect(insertCall[5]).toBe("Test Item");
     expect(insertCall[6]).toBe(null);
     expect(insertCall[7]).toBe(null);
     expect(insertCall[8]).toBe(null);
     expect(insertCall[9]).toBe(null);
     expect(insertCall[10]).toBe(null);
+    expect(insertCall[11]).toBe(null);
     expect(insertCall[11]).toBe(1);
     expect(insertCall[12]).toBe(null);
     expect(insertCall[13]).toBe(null);

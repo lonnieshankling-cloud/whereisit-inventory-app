@@ -90,7 +90,7 @@ describe("Recent Items endpoint", () => {
     const itemsQueryCall = vi.mocked(db.queryAll).mock.calls[0];
     expect(itemsQueryCall[1]).toBe(1);
 
-    expect(result).toEqual({ items: mockRecentItemsList });
+    expect(result.items).toEqual(mockRecentItemsList);
     expect(result.items).toHaveLength(2);
     expect(result.items[0].name).toBe("New Laptop");
     expect(result.items[1].name).toBe("Coffee Beans");

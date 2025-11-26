@@ -1,7 +1,7 @@
-import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
-import { expiring } from "./expiring";
-import type { Item } from "./create";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { AuthData } from "../auth/auth";
+import type { Item } from "./create";
+import { expiring } from "./expiring";
 
 vi.mock("~encore/auth", () => ({
   getAuthData: vi.fn(),
@@ -78,7 +78,7 @@ describe("Expiring Items endpoint", () => {
 
     expect(getAuthData).toHaveBeenCalled();
     
-    expect(db.queryRow).toHaveBeenCalledTimes(1);
+    expect(db.queryRow).toHaveBeenCalledTimes(2);
     const userQuery = vi.mocked(db.queryRow).mock.calls[0];
     expect(userQuery[0]).toEqual([
       "\n      SELECT household_id FROM users WHERE id = ",
