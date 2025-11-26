@@ -90,7 +90,7 @@ describe("Expiring Items endpoint", () => {
     const itemsQuery = vi.mocked(db.queryAll).mock.calls[0];
     expect(itemsQuery[1]).toBe(1);
 
-    expect(result).toEqual({ items: mockExpiringItemsList });
+    expect(result.items).toEqual(mockExpiringItemsList);
     expect(result.items).toHaveLength(2);
     expect(result.items[0].name).toBe("Milk");
     expect(result.items[1].name).toBe("Yogurt");
@@ -104,7 +104,7 @@ describe("Expiring Items endpoint", () => {
     expect(getAuthData).toHaveBeenCalled();
     expect(db.queryRow).toHaveBeenCalledTimes(1);
     expect(db.queryAll).not.toHaveBeenCalled();
-    expect(result).toEqual({ items: [] });
+    expect(result).toEqual({ items: [], total: 0, hasMore: false });
   });
 
   test("should return empty array when user not found", async () => {
@@ -115,7 +115,7 @@ describe("Expiring Items endpoint", () => {
     expect(getAuthData).toHaveBeenCalled();
     expect(db.queryRow).toHaveBeenCalledTimes(1);
     expect(db.queryAll).not.toHaveBeenCalled();
-    expect(result).toEqual({ items: [] });
+    expect(result).toEqual({ items: [], total: 0, hasMore: false });
   });
 
   test("should return empty array when no items are expiring", async () => {
@@ -125,8 +125,8 @@ describe("Expiring Items endpoint", () => {
     const result = await expiring({});
 
     expect(getAuthData).toHaveBeenCalled();
-    expect(db.queryRow).toHaveBeenCalledTimes(1);
+    expect(db.queryRow).toHaveBeenCalledTimes(2);
     expect(db.queryAll).toHaveBeenCalledTimes(1);
-    expect(result).toEqual({ items: [] });
+    expect(result).toEqual({ items: [], total: 0, hasMore: false });
   });
 });

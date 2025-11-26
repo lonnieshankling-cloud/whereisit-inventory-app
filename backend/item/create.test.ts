@@ -97,8 +97,8 @@ describe("Create Item endpoint", () => {
     expect(insertCall[9]).toBe(null);
     expect(insertCall[10]).toBe(null);
     expect(insertCall[11]).toBe(null);
-    expect(insertCall[11]).toBe(1);
-    expect(insertCall[12]).toBe(null);
+    expect(insertCall[12]).toBe(1);
+    expect(insertCall[13]).toBe(null);
     expect(insertCall[13]).toBe(null);
     expect(insertCall[14]).toEqual([]);
 
