@@ -99,8 +99,8 @@ describe("Create Item endpoint", () => {
     expect(insertCall[11]).toBe(null);
     expect(insertCall[12]).toBe(1);
     expect(insertCall[13]).toBe(null);
-    expect(insertCall[13]).toBe(null);
-    expect(insertCall[14]).toEqual([]);
+    expect(insertCall[14]).toBe(null);
+    expect(insertCall[15]).toEqual([]);
 
     expect(result).toEqual(mockCreatedItem);
     expect(result).toHaveProperty("id");
