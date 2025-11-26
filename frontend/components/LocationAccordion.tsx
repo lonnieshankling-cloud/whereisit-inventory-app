@@ -1,8 +1,3 @@
-import { useState, memo } from "react";
-import type { Location } from "~backend/location/create";
-import type { Item } from "~backend/item/create";
-import { ContainerList, ContainerWithItems } from "./ContainerList";
-import { ItemList } from "./ItemList";
 import {
   Accordion,
   AccordionContent,
@@ -19,8 +14,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Button } from "@/components/ui/button";
-import { Trash2, Plus } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
+import { memo, useState } from "react";
+import type { Item } from "~backend/item/create";
+import type { Location } from "~backend/location/create";
+import { ContainerList, ContainerWithItems } from "./ContainerList";
+import { ItemList } from "./ItemList";
 
 export type LocationWithContainers = Location & {
   containers: ContainerWithItems[];
@@ -68,25 +67,28 @@ export const LocationAccordion = memo(function LocationAccordion({ location, onD
               {!isNotPlaced && (
                 <div className="flex gap-2">
                   {onAddContainer && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
+                    <div
+                      role="button"
+                      tabIndex={0}
                       onClick={handleAddContainerClick}
-                      className="h-8 w-8 p-0 hover:bg-green-100 hover:text-green-600"
+                      onKeyDown={(e) => e.key === 'Enter' && handleAddContainerClick(e as any)}
+                      className="h-8 w-8 p-0 inline-flex items-center justify-center rounded-md hover:bg-green-100 hover:text-green-600 cursor-pointer"
                       title="Add container to this location"
                     >
                       <Plus className="h-4 w-4" />
-                    </Button>
+                    </div>
                   )}
                   {onDelete && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
+                    <div
+                      role="button"
+                      tabIndex={0}
                       onClick={handleDeleteClick}
-                      className="h-8 w-8 p-0 hover:bg-red-100 hover:text-red-600"
+                      onKeyDown={(e) => e.key === 'Enter' && handleDeleteClick(e as any)}
+                      className="h-8 w-8 p-0 inline-flex items-center justify-center rounded-md hover:bg-red-100 hover:text-red-600 cursor-pointer"
+                      title="Delete this location"
                     >
                       <Trash2 className="h-4 w-4" />
-                    </Button>
+                    </div>
                   )}
                 </div>
               )}
