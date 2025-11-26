@@ -23,7 +23,7 @@ describe("lowStock", () => {
 
     const result = await lowStock({});
 
-    expect(result).toEqual({ items: [] });
+    expect(result).toEqual({ items: [], total: 0, hasMore: false });
   });
 
   test("should calculate and return low stock items based on consumption", async () => {
