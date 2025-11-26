@@ -1,8 +1,7 @@
-import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
-import { get } from "./get";
-import type { Item } from "./create";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { AuthData } from "../auth/auth";
-import { APIError } from "encore.dev/api";
+import type { Item } from "./create";
+import { get } from "./get";
 
 vi.mock("~encore/auth", () => ({
   getAuthData: vi.fn(),
@@ -74,7 +73,7 @@ describe("Get Single Item endpoint", () => {
     const secondCall = vi.mocked(db.queryRow).mock.calls[1];
     expect(secondCall[0][0]).toContain("SELECT");
     expect(secondCall[0][0]).toContain("FROM items");
-    expect(secondCall[0][0]).toContain("WHERE id =");
+    expect(secondCall[0][0]).toContain("WHERE i.id =");
     expect(secondCall[1]).toBe(123);
     expect(secondCall[2]).toBe(1);
 

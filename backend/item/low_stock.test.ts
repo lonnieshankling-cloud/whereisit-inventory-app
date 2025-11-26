@@ -1,6 +1,6 @@
-import { describe, test, expect, vi, beforeEach } from "vitest";
-import { lowStock } from "./low_stock";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 import db from "../db";
+import { lowStock } from "./low_stock";
 
 vi.mock("~encore/auth", () => ({
   getAuthData: vi.fn(() => ({ userID: "user-abc" })),

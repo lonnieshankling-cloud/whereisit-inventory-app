@@ -1,7 +1,7 @@
-import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
-import { recent } from "./recent";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { AuthData } from "../auth/auth";
 import type { Item } from "./create";
+import { recent } from "./recent";
 
 vi.mock("~encore/auth", () => ({
   getAuthData: vi.fn(),
@@ -78,7 +78,7 @@ describe("Recent Items endpoint", () => {
 
     expect(getAuthData).toHaveBeenCalled();
 
-    expect(db.queryRow).toHaveBeenCalledTimes(1);
+    expect(db.queryRow).toHaveBeenCalledTimes(2);
     const userQueryCall = vi.mocked(db.queryRow).mock.calls[0];
     expect(userQueryCall[0]).toEqual([
       "\n      SELECT household_id FROM users WHERE id = ",
@@ -101,7 +101,7 @@ describe("Recent Items endpoint", () => {
 
     const result = await recent({});
 
-    expect(result).toEqual({ items: [] });
+    expect(result).toEqual({ items: [], total: 0, hasMore: false });
     expect(db.queryAll).not.toHaveBeenCalled();
   });
 
@@ -110,7 +110,7 @@ describe("Recent Items endpoint", () => {
 
     const result = await recent({});
 
-    expect(result).toEqual({ items: [] });
+    expect(result).toEqual({ items: [], total: 0, hasMore: false });
     expect(db.queryAll).not.toHaveBeenCalled();
   });
 });

@@ -1,8 +1,8 @@
-import { describe, test, expect, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
+import db from "../db";
+import { deleteItem } from "./delete";
 import { list } from "./list";
 import { update } from "./update";
-import { deleteItem } from "./delete";
-import db from "../db";
 
 vi.mock("~encore/auth", () => ({
   getAuthData: vi.fn(),
@@ -16,6 +16,10 @@ vi.mock("../db", () => ({
   },
 }));
 
+vi.mock("../household/utils", () => ({
+  ensureUserHasHousehold: vi.fn(),
+}));
+
 describe("shopping list", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -23,10 +27,13 @@ describe("shopping list", () => {
 
   test("should fetch all shopping list items for the user when authenticated", async () => {
     const { getAuthData } = await import("~encore/auth");
+    const { ensureUserHasHousehold } = await import("../household/utils");
     
     vi.mocked(getAuthData).mockReturnValue({
       userID: "user-abc",
     } as any);
+
+    vi.mocked(ensureUserHasHousehold).mockResolvedValue(1);
 
     const mockShoppingList = [
       {
@@ -50,9 +57,10 @@ describe("shopping list", () => {
     const result = await list();
 
     expect(getAuthData).toHaveBeenCalled();
+    expect(ensureUserHasHousehold).toHaveBeenCalledWith("user-abc");
     expect(db.queryAll).toHaveBeenCalledWith(
       expect.anything(),
-      "user-abc"
+      1
     );
     expect(result).toEqual({ items: mockShoppingList });
   });

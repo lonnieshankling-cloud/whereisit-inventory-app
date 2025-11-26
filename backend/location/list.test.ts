@@ -1,7 +1,7 @@
-import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
-import { list } from "./list";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { AuthData } from "../auth/auth";
 import type { Location } from "./create";
+import { list } from "./list";
 
 vi.mock("~encore/auth", () => ({
   getAuthData: vi.fn(),
@@ -90,7 +90,7 @@ describe("List Locations endpoint", () => {
     expect(getAuthData).toHaveBeenCalled();
     expect(db.queryRow).toHaveBeenCalledTimes(1);
     expect(db.queryAll).not.toHaveBeenCalled();
-    expect(result).toEqual({ locations: [] });
+    expect(result).toEqual({ locations: [], containers: [] });
   });
 
   test("should return empty array when user not found", async () => {
@@ -101,7 +101,7 @@ describe("List Locations endpoint", () => {
     expect(getAuthData).toHaveBeenCalled();
     expect(db.queryRow).toHaveBeenCalledTimes(1);
     expect(db.queryAll).not.toHaveBeenCalled();
-    expect(result).toEqual({ locations: [] });
+    expect(result).toEqual({ locations: [], containers: [] });
   });
 
   test("should return empty locations array when household has no locations", async () => {
@@ -112,7 +112,7 @@ describe("List Locations endpoint", () => {
 
     expect(getAuthData).toHaveBeenCalled();
     expect(db.queryRow).toHaveBeenCalledTimes(1);
-    expect(db.queryAll).toHaveBeenCalledTimes(1);
-    expect(result).toEqual({ locations: [] });
+    expect(db.queryAll).toHaveBeenCalledTimes(3);
+    expect(result).toEqual({ locations: [], containers: [] });
   });
 });
