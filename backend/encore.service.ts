@@ -1,10 +1,7 @@
-import { api, Gateway } from "encore.dev/api";
+import { Gateway } from "encore.dev/api";
 
 export const gateway = new Gateway({
   cors: {
-    allowOriginsWithoutCredentials: ["*"],
-    allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowHeaders: ["*"],
-    exposeHeaders: ["*"],
+    allowOriginsWithoutCredentials: ["http://localhost:5173", "http://localhost:5174", "http://localhost:3000"],
   },
 });
