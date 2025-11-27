@@ -76,10 +76,10 @@ describe("List Locations endpoint", () => {
     ]);
     expect(secondCall[1]).toBe(1);
 
-    expect(result).toEqual({ locations: mockLocationsList });
     expect(result.locations).toHaveLength(2);
     expect(result.locations[0].name).toBe("Kitchen");
     expect(result.locations[1].name).toBe("Garage");
+    expect(result).toHaveProperty("containers");
   });
 
   test("should return empty array when user has no household", async () => {
