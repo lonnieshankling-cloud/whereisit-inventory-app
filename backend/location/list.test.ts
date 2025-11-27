@@ -71,8 +71,8 @@ describe("List Locations endpoint", () => {
     expect(db.queryAll).toHaveBeenCalledTimes(3);
     const secondCall = vi.mocked(db.queryAll).mock.calls[0];
     expect(secondCall[0]).toEqual([
-      "\n      SELECT id, name\n      FROM locations\n      WHERE household_id = ",
-      "\n      ORDER BY name ASC\n    ",
+      "\n        SELECT id, name, user_id, created_at\n        FROM locations\n        WHERE household_id = ",
+      "\n        ORDER BY name ASC\n      ",
     ]);
     expect(secondCall[1]).toBe(1);
 
