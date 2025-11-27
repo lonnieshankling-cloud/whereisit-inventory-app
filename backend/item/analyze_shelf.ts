@@ -2,7 +2,7 @@ import { api, APIError } from "encore.dev/api";
 import { secret } from "encore.dev/config";
 import { getAuthData } from "~encore/auth";
 
-const geminiApiKey = secret("GEMINI_API_KEY");
+const geminiApiKey = secret("GeminiApiKey");
 
 interface AnalyzedItem {
   name: string;
