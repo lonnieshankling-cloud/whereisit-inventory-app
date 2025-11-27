@@ -2,7 +2,7 @@ import { api } from "encore.dev/api";
 import { secret } from "encore.dev/config";
 import { images } from "../storage";
 
-const geminiApiKey = secret("GEMINI_API_KEY");
+const geminiApiKey = secret("GeminiApiKey");
 
 async function getGenAI() {
   const { GoogleGenerativeAI } = await import("@google/generative-ai");
