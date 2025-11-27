@@ -1,7 +1,4 @@
-import { Service } from "encore.dev/service";
-import { api, Gateway } from "encore.dev/api";
-
-export default new Service("api");
+import { Gateway } from "encore.dev/api";
 
 export const gateway = new Gateway({
   cors: {
