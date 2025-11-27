@@ -1,6 +1,6 @@
 import { api, APIError } from "encore.dev/api";
-import { getAuthData } from "~encore/auth";
 import { secret } from "encore.dev/config";
+import { getAuthData } from "~encore/auth";
 
 const geminiApiKey = secret("GEMINI_API_KEY");
 
