@@ -6,6 +6,17 @@ export interface CompressionOptions {
   quality?: number; // 0-1
 }
 
+// Cache for compressed images to avoid recompressing
+const compressionCache = new Map<string, string>();
+
+// Clear cache when it gets too large (prevent memory issues)
+function manageCacheSize() {
+  if (compressionCache.size > 50) {
+    const firstKey = compressionCache.keys().next().value;
+    if (firstKey) compressionCache.delete(firstKey);
+  }
+}
+
 /**
  * Compresses an image to reduce file size while maintaining quality
  * @param uri - The original image URI
@@ -22,7 +33,15 @@ export async function compressImage(
     quality = 0.8,
   } = options;
 
+  // Check cache first
+  const cacheKey = `${uri}-${maxWidth}-${maxHeight}-${quality}`;
+  if (compressionCache.has(cacheKey)) {
+    console.log('Using cached compressed image');
+    return compressionCache.get(cacheKey)!;
+  }
+
   try {
+    manageCacheSize();
     // Get image info to determine if resizing is needed
     const result = await ImageManipulator.manipulateAsync(
       uri,
@@ -41,6 +60,10 @@ export async function compressImage(
     );
 
     console.log('Image compressed successfully:', result.uri);
+    
+    // Cache the result
+    compressionCache.set(cacheKey, result.uri);
+    
     return result.uri;
   } catch (error) {
     console.error('Failed to compress image:', error);

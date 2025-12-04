@@ -6,7 +6,9 @@ export interface LocalItem {
   description?: string;
   category?: string;
   location_id?: string;
+  location_name?: string;
   container_id?: string;
+  container_name?: string;
   photo_url?: string;
   local_photo_uri?: string;
   quantity?: number;
@@ -118,6 +120,30 @@ class DatabaseService {
       // Column already exists, ignore error
     }
 
+    // Add location_name column if it doesn't exist (migration)
+    try {
+      await this.db.execAsync('ALTER TABLE items ADD COLUMN location_name TEXT;');
+    } catch (error) {
+      // Column already exists, ignore error
+    }
+
+    // Add container_name column if it doesn't exist (migration)
+    try {
+      await this.db.execAsync('ALTER TABLE items ADD COLUMN container_name TEXT;');
+    } catch (error) {
+      // Column already exists, ignore error
+    }
+
+    // Locations table
+    await this.db.execAsync(`
+      CREATE TABLE IF NOT EXISTS locations (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+    `);
+
     // Containers table
     await this.db.execAsync(`
       CREATE TABLE IF NOT EXISTS containers (
@@ -158,14 +184,57 @@ class DatabaseService {
       );
     `);
 
-    // Create indices
+    // Create indices for performance optimization
     await this.db.execAsync(`
       CREATE INDEX IF NOT EXISTS idx_items_container_id ON items(container_id);
+      CREATE INDEX IF NOT EXISTS idx_items_location_id ON items(location_id);
       CREATE INDEX IF NOT EXISTS idx_items_barcode ON items(barcode);
       CREATE INDEX IF NOT EXISTS idx_items_synced ON items(synced);
+      CREATE INDEX IF NOT EXISTS idx_items_category ON items(category);
+      CREATE INDEX IF NOT EXISTS idx_items_name ON items(name COLLATE NOCASE);
+      CREATE INDEX IF NOT EXISTS idx_items_updated_at ON items(updated_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_items_quantity ON items(quantity);
       CREATE INDEX IF NOT EXISTS idx_receipts_item_id ON receipts(item_id);
       CREATE INDEX IF NOT EXISTS idx_shopping_is_purchased ON shopping_list(is_purchased);
+      CREATE INDEX IF NOT EXISTS idx_shopping_updated_at ON shopping_list(updated_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_containers_name ON containers(name COLLATE NOCASE);
+      CREATE INDEX IF NOT EXISTS idx_locations_name ON locations(name COLLATE NOCASE);
     `);
+
+    // Migrate existing locations from items table to locations table
+    await this.migrateLocations();
+  }
+
+  private async migrateLocations(): Promise<void> {
+    if (!this.db) return;
+
+    try {
+      console.log('🔄 Starting location migration...');
+      
+      // Get distinct locations from items table
+      const existingLocations = await this.db.getAllAsync<{ location_id: string; location_name: string }>(`
+        SELECT DISTINCT location_id, location_name 
+        FROM items 
+        WHERE location_id IS NOT NULL AND location_name IS NOT NULL
+      `);
+
+      console.log(`📍 Found ${existingLocations.length} locations in items table:`, existingLocations);
+
+      // Insert each location into locations table if it doesn't exist
+      for (const loc of existingLocations) {
+        const now = Date.now();
+        await this.db.runAsync(
+          'INSERT OR IGNORE INTO locations (id, name, created_at, updated_at) VALUES (?, ?, ?, ?)',
+          [loc.location_id, loc.location_name, now, now]
+        );
+        console.log(`✅ Migrated location: ${loc.location_name} (${loc.location_id})`);
+      }
+
+      console.log(`✅ Migration complete: ${existingLocations.length} locations migrated`);
+    } catch (error) {
+      console.error('❌ Error migrating locations:', error);
+      // Don't throw - this is a best-effort migration
+    }
   }
 
   // ==================== ITEMS ====================
@@ -223,30 +292,40 @@ class DatabaseService {
     return result || null;
   }
 
-  async getAllItems(): Promise<LocalItem[]> {
+  async getAllItems(limit?: number, offset?: number): Promise<LocalItem[]> {
     if (!this.db) throw new Error('Database not initialized');
 
-    return await this.db.getAllAsync<LocalItem>(
-      'SELECT * FROM items ORDER BY updated_at DESC'
-    );
+    const query = limit !== undefined
+      ? 'SELECT * FROM items ORDER BY updated_at DESC LIMIT ? OFFSET ?'
+      : 'SELECT * FROM items ORDER BY updated_at DESC';
+    
+    const params = limit !== undefined ? [limit, offset || 0] : [];
+    
+    return await this.db.getAllAsync<LocalItem>(query, params);
   }
 
-  async getItemsByLocation(locationId: string): Promise<LocalItem[]> {
+  async getItemsByLocation(locationId: string, limit?: number, offset?: number): Promise<LocalItem[]> {
     if (!this.db) throw new Error('Database not initialized');
 
-    return await this.db.getAllAsync<LocalItem>(
-      'SELECT * FROM items WHERE location_id = ? ORDER BY name ASC',
-      [locationId]
-    );
+    const query = limit !== undefined
+      ? 'SELECT * FROM items WHERE location_id = ? ORDER BY name ASC LIMIT ? OFFSET ?'
+      : 'SELECT * FROM items WHERE location_id = ? ORDER BY name ASC';
+    
+    const params = limit !== undefined ? [locationId, limit, offset || 0] : [locationId];
+    
+    return await this.db.getAllAsync<LocalItem>(query, params);
   }
 
-  async getItemsByContainer(containerId: string): Promise<LocalItem[]> {
+  async getItemsByContainer(containerId: string, limit?: number, offset?: number): Promise<LocalItem[]> {
     if (!this.db) throw new Error('Database not initialized');
 
-    return await this.db.getAllAsync<LocalItem>(
-      'SELECT * FROM items WHERE container_id = ? ORDER BY name ASC',
-      [containerId]
-    );
+    const query = limit !== undefined
+      ? 'SELECT * FROM items WHERE container_id = ? ORDER BY name ASC LIMIT ? OFFSET ?'
+      : 'SELECT * FROM items WHERE container_id = ? ORDER BY name ASC';
+    
+    const params = limit !== undefined ? [containerId, limit, offset || 0] : [containerId];
+    
+    return await this.db.getAllAsync<LocalItem>(query, params);
   }
 
   async searchItemsByBarcode(barcode: string): Promise<LocalItem[]> {
@@ -338,18 +417,45 @@ class DatabaseService {
   async getAllLocations(): Promise<{ id: string; name: string }[]> {
     if (!this.db) throw new Error('Database not initialized');
 
-    // Get unique locations from items table
-    const locations = await this.db.getAllAsync<{ id: string; name: string }>(
-      'SELECT DISTINCT location_id as id, location_name as name FROM items WHERE location_id IS NOT NULL AND location_name IS NOT NULL ORDER BY location_name ASC'
-    );
-    return locations;
+    try {
+      // Get locations from locations table
+      const locationsFromTable = await this.db.getAllAsync<{ id: string; name: string }>(
+        'SELECT id, name FROM locations ORDER BY name ASC'
+      );
+      console.log('📍 Locations from table:', locationsFromTable.length, locationsFromTable);
+      
+      // Also get unique locations from items table (for backward compatibility)
+      const locationsFromItems = await this.db.getAllAsync<{ id: string; name: string }>(
+        'SELECT DISTINCT location_id as id, location_name as name FROM items WHERE location_id IS NOT NULL AND location_name IS NOT NULL'
+      );
+      console.log('📍 Locations from items:', locationsFromItems.length, locationsFromItems);
+      
+      // Merge and deduplicate
+      const allLocations = [...locationsFromTable];
+      for (const itemLoc of locationsFromItems) {
+        if (!allLocations.some(loc => loc.id === itemLoc.id)) {
+          allLocations.push(itemLoc);
+        }
+      }
+      
+      console.log('📍 Total merged locations:', allLocations.length);
+      return allLocations.sort((a, b) => a.name.localeCompare(b.name));
+    } catch (error) {
+      console.error('❌ Error in getAllLocations:', error);
+      throw error;
+    }
   }
 
   async createLocation(location: { id: string; name: string }): Promise<void> {
-    // Locations are stored as part of items, not in a separate table
-    // This is a no-op function that exists for API compatibility
-    // The location will be created when an item is assigned to it
-    return Promise.resolve();
+    if (!this.db) throw new Error('Database not initialized');
+    
+    console.log('💾 Inserting location into database:', location);
+    const now = Date.now();
+    await this.db.runAsync(
+      'INSERT OR REPLACE INTO locations (id, name, created_at, updated_at) VALUES (?, ?, ?, ?)',
+      [location.id, location.name, now, now]
+    );
+    console.log('✅ Location inserted successfully');
   }
 
   async getContainer(id: string): Promise<LocalContainer | null> {

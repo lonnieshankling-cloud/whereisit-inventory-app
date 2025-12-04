@@ -2,7 +2,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
 import { Camera, Check, ChevronDown, Crop, Edit2, Loader, MapPin, Package, Plus, Trash2, X } from 'lucide-react-native';
-import { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     Alert,
     FlatList,
@@ -66,20 +66,20 @@ export function MobileShelfAnalyzer({ visible, onClose, onItemsDetected }: Mobil
     }
   }, [showReview]);
 
-  const loadContainersAndLocations = async () => {
+  const loadContainersAndLocations = useCallback(async () => {
     try {
       const [containersData, locationsData] = await Promise.all([
         databaseService.getAllContainers(),
         databaseService.getAllLocations(),
       ]);
-      console.log('📦 Loaded containers:', containersData.length);
-      console.log('📍 Loaded locations:', locationsData.length);
+      console.log('📦 Loaded containers:', containersData.length, containersData);
+      console.log('📍 Loaded locations:', locationsData.length, locationsData);
       setContainers(containersData);
       setLocations(locationsData);
     } catch (error) {
-      console.error('Error loading containers/locations:', error);
+      console.error('❌ Error loading containers/locations:', error);
     }
-  };
+  }, []);
 
   const handleCapture = async () => {
     if (!cameraRef.current) return;
@@ -295,10 +295,15 @@ export function MobileShelfAnalyzer({ visible, onClose, onItemsDetected }: Mobil
 
       console.log('Final enhanced items:', finalItems.length);
       
+      // Attach the photo URI to all detected items
+      const itemsWithPhoto = finalItems.map(item => ({
+        ...item,
+        photoUri: capturedPhoto,
+      }));
+      
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      setDetectedItems(finalItems);
+      setDetectedItems(itemsWithPhoto);
       setShowReview(true);
-      setCapturedPhoto(null);
     } catch (error) {
       console.error('Error analyzing shelf:', error);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
@@ -331,17 +336,18 @@ export function MobileShelfAnalyzer({ visible, onClose, onItemsDetected }: Mobil
     onClose();
   };
 
-  const handleEditItem = (index: number, field: keyof DetectedItem, value: string) => {
-    const updated = [...detectedItems];
-    updated[index] = { ...updated[index], [field]: value };
-    setDetectedItems(updated);
-  };
+  const handleEditItem = useCallback((index: number, field: keyof DetectedItem, value: string) => {
+    setDetectedItems(prev => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], [field]: value };
+      return updated;
+    });
+  }, []);
 
-  const handleDeleteItem = (index: number) => {
+  const handleDeleteItem = useCallback((index: number) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const updated = detectedItems.filter((_, i) => i !== index);
-    setDetectedItems(updated);
-  };
+    setDetectedItems(prev => prev.filter((_, i) => i !== index));
+  }, []);
 
   const handleCropPhoto = async (itemIndex: number) => {
     if (!capturedPhoto) return;
@@ -427,16 +433,12 @@ export function MobileShelfAnalyzer({ visible, onClose, onItemsDetected }: Mobil
       Alert.alert('No Items', 'Please add at least one item');
       return;
     }
-    // Add photo URI to all items that don't have one yet
-    const itemsWithPhoto = detectedItems.map(item => ({
-      ...item,
-      photoUri: item.photoUri || capturedPhoto || undefined,
-    }));
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    onItemsDetected(itemsWithPhoto);
+    onItemsDetected(detectedItems);
     onClose();
     setShowReview(false);
     setDetectedItems([]);
+    setCapturedPhoto(null);
   };
 
   if (!permission) {
@@ -541,7 +543,7 @@ export function MobileShelfAnalyzer({ visible, onClose, onItemsDetected }: Mobil
 
           <FlatList
             data={detectedItems}
-            keyExtractor={(_, index) => index.toString()}
+            keyExtractor={(item, index) => `${item.name}-${index}`}
             contentContainerStyle={styles.reviewList}
             renderItem={({ item, index }) => (
               <ReviewItemCard
@@ -556,6 +558,11 @@ export function MobileShelfAnalyzer({ visible, onClose, onItemsDetected }: Mobil
                 onLoadContainersAndLocations={loadContainersAndLocations}
               />
             )}
+            removeClippedSubviews={true}
+            maxToRenderPerBatch={5}
+            updateCellsBatchingPeriod={100}
+            initialNumToRender={5}
+            windowSize={5}
           />
 
           <View style={styles.reviewFooter}>
@@ -580,8 +587,8 @@ export function MobileShelfAnalyzer({ visible, onClose, onItemsDetected }: Mobil
   );
 }
 
-// Review Item Card Component
-function ReviewItemCard({ 
+// Review Item Card Component - Memoized for performance
+const ReviewItemCard = React.memo(function ReviewItemCard({ 
   item, 
   index, 
   onEdit, 
@@ -682,13 +689,18 @@ function ReviewItemCard({
 
     try {
       const locationId = `location_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      console.log('🏗️ Creating location:', newLocationName.trim(), locationId);
+      
       await databaseService.createLocation({
         id: locationId,
         name: newLocationName.trim(),
       });
+      console.log('✅ Location created successfully');
 
       // Reload locations and update state
+      console.log('🔄 Reloading locations...');
       await onLoadContainersAndLocations();
+      console.log('✅ Locations reloaded');
       
       // Select the newly created location
       handleSelectLocation(locationId, newLocationName.trim());
@@ -1025,7 +1037,7 @@ function ReviewItemCard({
       </Modal>
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   container: {
