@@ -14,6 +14,7 @@ interface UpdateItemRequest {
   quantity?: number;
   consumption?: number;
   expirationDate?: Date;
+  notes?: string;
   tags?: string[];
   isFavorite?: boolean;
 }
@@ -46,6 +47,7 @@ export const update = api<UpdateItemRequest, Item>(
         quantity,
         consumption,
         expiration_date as "expirationDate",
+        notes,
         tags,
         is_favorite as "isFavorite",
         created_at as "createdAt",
@@ -69,6 +71,7 @@ export const update = api<UpdateItemRequest, Item>(
         quantity = ${req.quantity ?? current.quantity},
         consumption = ${req.consumption ?? current.consumption},
         expiration_date = ${req.expirationDate !== undefined ? req.expirationDate : current.expirationDate},
+        notes = ${req.notes !== undefined ? req.notes : current.notes},
         tags = ${req.tags ?? current.tags},
         is_favorite = ${req.isFavorite ?? current.isFavorite}
       WHERE id = ${req.id} AND household_id = ${user.household_id}
@@ -84,6 +87,7 @@ export const update = api<UpdateItemRequest, Item>(
         quantity,
         consumption,
         expiration_date as "expirationDate",
+        notes,
         tags,
         is_favorite as "isFavorite",
         created_at as "createdAt",

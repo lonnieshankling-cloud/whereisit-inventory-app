@@ -1,18 +1,14 @@
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { api } from "encore.dev/api";
 import { secret } from "encore.dev/config";
 import { images } from "../storage";
 
 const geminiApiKey = secret("GeminiApiKey");
 
-async function getGenAI() {
-  const { GoogleGenerativeAI } = await import("@google/generative-ai");
-  const key = geminiApiKey();
-  return new GoogleGenerativeAI(key);
-}
-
 export async function analyzeImage(imageData: string, mimeType: string): Promise<string> {
-  const genAI = await getGenAI();
-  const model = genAI.getGenerativeModel({ model: "gemini-pro-vision" });
+  const apiKey = geminiApiKey();
+  const genAI = new GoogleGenerativeAI(apiKey);
+  const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
   
   const result = await model.generateContent([
     {

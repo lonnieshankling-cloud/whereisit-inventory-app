@@ -1,28 +1,32 @@
-import { useState, useEffect, ChangeEvent, MouseEvent, KeyboardEvent } from "react";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Button } from "@/components/ui/button";
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogHeader,
+    DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
 } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { useToast } from "@/components/ui/use-toast";
+import { useBackend } from "@/lib/backend";
+import { Edit2, FileText, Loader2, Minus, Package, Save, Shield, X } from "lucide-react";
+import { ChangeEvent, useEffect, useState } from "react";
+import type { ItemReceipt } from "~backend/item/add_receipt";
 import type { Item } from "~backend/item/create";
 import { ConsumptionHistory } from "./ConsumptionHistory";
-import { useBackend } from "@/lib/backend";
-import { Package, Minus, Edit2, Save, X, Loader2 } from "lucide-react";
-import { useToast } from "@/components/ui/use-toast";
 import { LazyImage } from "./LazyImage";
+import { ReceiptUploader } from "./ReceiptUploader";
+import { ReceiptViewer } from "./ReceiptViewer";
 
 interface ItemDetailDialogProps {
   item: Item | null;
@@ -41,6 +45,12 @@ export function ItemDetailDialog({ item, open, onClose, onItemUpdated }: ItemDet
   const [editExpirationDate, setEditExpirationDate] = useState("");
   const [editPrivacyLevel, setEditPrivacyLevel] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [receipts, setReceipts] = useState<ItemReceipt[]>([]);
+  const [selectedReceipt, setSelectedReceipt] = useState<ItemReceipt | null>(null);
+  const [purchaseDate, setPurchaseDate] = useState("");
+  const [purchasePrice, setPurchasePrice] = useState("");
+  const [purchaseStore, setPurchaseStore] = useState("");
+  const [warrantyUntil, setWarrantyUntil] = useState("");
   const backend = useBackend();
   const { toast } = useToast();
 
@@ -51,8 +61,24 @@ export function ItemDetailDialog({ item, open, onClose, onItemUpdated }: ItemDet
       setEditQuantity(item.quantity.toString());
       setEditExpirationDate(item.expirationDate ? new Date(item.expirationDate).toISOString().split('T')[0] : "");
       setEditPrivacyLevel("household");
+      setPurchaseDate((item as any).purchaseDate ? new Date((item as any).purchaseDate).toISOString().split('T')[0] : "");
+      setPurchasePrice((item as any).purchasePrice?.toString() || "");
+      setPurchaseStore((item as any).purchaseStore || "");
+      setWarrantyUntil((item as any).warrantyUntil ? new Date((item as any).warrantyUntil).toISOString().split('T')[0] : "");
+      loadReceipts();
     }
   }, [item]);
+
+  const loadReceipts = async () => {
+    if (!item) return;
+    try {
+      const response = await backend.item.listReceipts({ itemId: item.id });
+      setReceipts(response.receipts);
+    } catch (error) {
+      console.error("Failed to load receipts:", error);
+      setReceipts([]);
+    }
+  };
 
   if (!item) return null;
 
@@ -328,12 +354,125 @@ export function ItemDetailDialog({ item, open, onClose, onItemUpdated }: ItemDet
           )}
 
           {!isEditing && (
+            <Accordion type="single" collapsible className="border-t">
+              <AccordionItem value="receipts">
+                <AccordionTrigger className="hover:no-underline">
+                  <div className="flex items-center gap-2">
+                    <FileText className="h-4 w-4" />
+                    <span className="font-semibold">Receipts & Warranty</span>
+                    {receipts.length > 0 && (
+                      <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
+                        {receipts.length}
+                      </span>
+                    )}
+                  </div>
+                </AccordionTrigger>
+                <AccordionContent className="space-y-4 pt-4">
+                  {/* Purchase Details */}
+                  <div className="space-y-3">
+                    <h4 className="text-sm font-semibold">Purchase Information</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div>
+                        <Label htmlFor="purchase-date" className="text-xs">Purchase Date</Label>
+                        <Input
+                          id="purchase-date"
+                          type="date"
+                          value={purchaseDate}
+                          onChange={(e) => setPurchaseDate(e.target.value)}
+                          className="mt-1"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="purchase-price" className="text-xs">Purchase Price</Label>
+                        <Input
+                          id="purchase-price"
+                          type="number"
+                          step="0.01"
+                          placeholder="0.00"
+                          value={purchasePrice}
+                          onChange={(e) => setPurchasePrice(e.target.value)}
+                          className="mt-1"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="purchase-store" className="text-xs">Store</Label>
+                        <Input
+                          id="purchase-store"
+                          placeholder="e.g., Amazon, Best Buy"
+                          value={purchaseStore}
+                          onChange={(e) => setPurchaseStore(e.target.value)}
+                          className="mt-1"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="warranty-until" className="text-xs">Warranty Until</Label>
+                        <Input
+                          id="warranty-until"
+                          type="date"
+                          value={warrantyUntil}
+                          onChange={(e) => setWarrantyUntil(e.target.value)}
+                          className="mt-1"
+                        />
+                      </div>
+                    </div>
+                    {warrantyUntil && (
+                      <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-lg">
+                        <Shield className="h-4 w-4 text-green-600" />
+                        <span className="text-sm text-green-700">
+                          Warranty {new Date(warrantyUntil) > new Date() ? "active" : "expired"} until{" "}
+                          {new Date(warrantyUntil).toLocaleDateString()}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Receipt Gallery */}
+                  <div className="space-y-3">
+                    <h4 className="text-sm font-semibold">Receipt Images</h4>
+                    {receipts.length > 0 && (
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                        {receipts.map((receipt) => (
+                          <div
+                            key={receipt.id}
+                            className="relative group cursor-pointer"
+                            onClick={() => setSelectedReceipt(receipt)}
+                          >
+                            <img
+                              src={receipt.thumbnailUrl || receipt.receiptUrl}
+                              alt="Receipt"
+                              className="w-full h-32 object-cover rounded-lg border border-gray-200 hover:border-blue-500 transition-colors"
+                            />
+                            <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-opacity rounded-lg flex items-center justify-center">
+                              <FileText className="h-8 w-8 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                            </div>
+                            <span className="absolute top-2 left-2 text-xs bg-black bg-opacity-60 text-white px-2 py-1 rounded capitalize">
+                              {receipt.receiptType}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <ReceiptUploader itemId={item.id} onReceiptAdded={loadReceipts} />
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
+          )}
+
+          {!isEditing && (
             <div className="border-t pt-4">
               <ConsumptionHistory itemId={item.id} backend={backend} key={item.id} />
             </div>
           )}
         </div>
       </DialogContent>
+
+      <ReceiptViewer
+        receipt={selectedReceipt}
+        open={!!selectedReceipt}
+        onClose={() => setSelectedReceipt(null)}
+        onDeleted={loadReceipts}
+      />
     </Dialog>
   );
 }

@@ -1,16 +1,17 @@
-import { useState, useMemo, useCallback, useRef, useEffect } from "react";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/use-toast";
 import { useBackend } from "@/lib/backend";
 import { useInfiniteScroll } from "@/lib/useInfiniteScroll";
+import { Move } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Item } from "~backend/item/create";
 import { EditItemDialog } from "./EditItemDialog";
-import { StickySearchFilterBar } from "./StickySearchFilterBar";
+import { EmptyState } from "./EmptyState";
 import { FilterOptions } from "./FiltersDialog";
-import { Checkbox } from "@/components/ui/checkbox";
 import { MoveItemsDialog } from "./MoveItemsDialog";
-import { Button } from "@/components/ui/button";
-import { Move } from "lucide-react";
-import { Skeleton } from "@/components/ui/skeleton";
+import { StickySearchFilterBar } from "./StickySearchFilterBar";
 
 export function UnplacedItems() {
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
@@ -136,7 +137,15 @@ export function UnplacedItems() {
       />
 
       {filteredItems.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No items to show.</p>
+        <EmptyState
+          icon="package"
+          title={searchQuery || Object.keys(filters).length > 0 ? "No items found" : "No unassigned items"}
+          description={
+            searchQuery || Object.keys(filters).length > 0
+              ? "Try adjusting your search or filters to find what you're looking for."
+              : "All items have been assigned to locations. Great job organizing!"
+          }
+        />
       ) : (
         <>
           <ul className="space-y-3">

@@ -1,26 +1,28 @@
+import { Button } from "@/components/ui/button";
+import { Toaster } from "@/components/ui/toaster";
+import { theme } from "@/lib/theme";
 import { ClerkProvider, SignedIn, SignedOut, SignInButton } from "@clerk/clerk-react";
 import { useState } from "react";
-import { Header } from "./components/Header";
-import { SearchBar } from "./components/SearchBar";
-import { QuickAccessCards } from "./components/QuickAccessCards";
-import { LocationsList } from "./components/LocationsList";
-import { AddItemButton } from "./components/AddItemButton";
-import { ScanButton } from "./components/ScanButton";
-import { ShoppingList } from "./components/ShoppingList";
-import { MyHousehold } from "./components/MyHousehold";
-import { Settings } from "./components/Settings";
-import { PlacedItemFilter } from "./components/PlacedItemFilter";
-import { Toaster } from "@/components/ui/toaster";
-import { Button } from "@/components/ui/button";
-import { UnplacedItems } from "./components/UnplacedItems";
-import { RecentItems } from "./components/RecentItems";
-import { ExpiringItems } from "./components/ExpiringItems";
-import { LowStockItems } from "./components/LowStockItems";
-import { FavoriteItems } from "./components/FavoriteItems";
-import { NeedsConfirmation } from "./components/NeedsConfirmation";
-import { ItemDetailDialog } from "./components/ItemDetailDialog";
 import type { Item } from "~backend/item/create";
-import { theme } from "@/lib/theme";
+import { AddItemButton } from "./components/AddItemButton";
+import { Breadcrumbs } from "./components/Breadcrumbs";
+import { DashboardStats } from "./components/DashboardStats";
+import { ExpiringItems } from "./components/ExpiringItems";
+import { FavoriteItems } from "./components/FavoriteItems";
+import { Header } from "./components/Header";
+import { ItemDetailDialog } from "./components/ItemDetailDialog";
+import { LocationsList } from "./components/LocationsList";
+import { LowStockItems } from "./components/LowStockItems";
+import { MyHousehold } from "./components/MyHousehold";
+import { NeedsConfirmation } from "./components/NeedsConfirmation";
+import { PlacedItemFilter } from "./components/PlacedItemFilter";
+import { QuickAccessCards } from "./components/QuickAccessCards";
+import { RecentItems } from "./components/RecentItems";
+import { ScanButton } from "./components/ScanButton";
+import { SearchBar } from "./components/SearchBar";
+import { Settings } from "./components/Settings";
+import { ShoppingList } from "./components/ShoppingList";
+import { UnplacedItems } from "./components/UnplacedItems";
 
 const PUBLISHABLE_KEY = "pk_test_bm9ybWFsLWFwaGlkLTY1LmNsZXJrLmFjY291bnRzLmRldiQ";
 
@@ -33,8 +35,35 @@ function AppInner() {
   
   const isFiltered = filterStatus !== 'all';
 
+  const getBreadcrumbs = () => {
+    const breadcrumbs = [];
+    if (currentPage !== "dashboard") {
+      breadcrumbs.push({ label: "Dashboard", onClick: () => setCurrentPage("dashboard") });
+    }
+    
+    const pageNames: Record<string, string> = {
+      "shopping-list": "Shopping List",
+      "my-household": "My Household",
+      "settings": "Settings",
+      "locations": "Locations",
+      "unassigned-items": "Unassigned Items",
+      "recent-items": "Recently Added",
+      "expiring-items": "Expiring Items",
+      "low-stock": "Low Stock",
+      "favorites": "Favorites",
+      "needs-confirmation": "Needs Confirmation",
+      "all-items": "All Items",
+    };
+
+    if (currentPage in pageNames) {
+      breadcrumbs.push({ label: pageNames[currentPage] });
+    }
+
+    return breadcrumbs;
+  };
+
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen" style={{ backgroundColor: theme.colors.surface.gray50 }}>
       <Header onNavigate={setCurrentPage} />
       
       <main className="container mx-auto px-4 py-8 max-w-6xl">
@@ -82,6 +111,7 @@ function AppInner() {
 
         <SignedIn>
           <>
+            <Breadcrumbs items={getBreadcrumbs()} />
             {currentPage === "shopping-list" ? (
               <ShoppingList />
             ) : currentPage === "my-household" ? (
@@ -93,9 +123,41 @@ function AppInner() {
                 <h2 className="text-2xl font-bold mb-4">Locations</h2>
                 <LocationsList externalSearchQuery={searchQuery} />
               </>
+            ) : currentPage === "unassigned-items" ? (
+              <>
+                <h2 className="text-2xl font-bold mb-4">Unassigned Items</h2>
+                <UnplacedItems />
+              </>
+            ) : currentPage === "recent-items" ? (
+              <>
+                <h2 className="text-2xl font-bold mb-4">Recently Added Items</h2>
+                <RecentItems />
+              </>
+            ) : currentPage === "expiring-items" ? (
+              <>
+                <h2 className="text-2xl font-bold mb-4">Expiring Items</h2>
+                <ExpiringItems />
+              </>
+            ) : currentPage === "low-stock" ? (
+              <>
+                <h2 className="text-2xl font-bold mb-4">Low Stock Items</h2>
+                <LowStockItems />
+              </>
+            ) : currentPage === "favorites" ? (
+              <>
+                <h2 className="text-2xl font-bold mb-4">Favorite Items</h2>
+                <FavoriteItems />
+              </>
+            ) : currentPage === "needs-confirmation" ? (
+              <>
+                <h2 className="text-2xl font-bold mb-4">Needs Confirmation</h2>
+                <NeedsConfirmation />
+              </>
             ) : (
               <>
-                <div className="mb-12">
+                <DashboardStats />
+
+                <div className="mt-8 mb-6">
                   <SearchBar query={searchQuery} onQueryChange={setSearchQuery} />
                 </div>
 

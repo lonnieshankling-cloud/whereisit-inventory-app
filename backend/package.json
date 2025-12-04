@@ -8,7 +8,11 @@
     "test": "vitest"
   },
   "dependencies": {
-    "encore.dev": "^1.51.10"
+    "@clerk/backend": "^2.24.0",
+    "@google-cloud/vision": "^5.3.4",
+    "@google/generative-ai": "^0.24.1",
+    "encore.dev": "^1.51.11",
+    "sharp": "^0.34.5"
   },
   "devDependencies": {
     "typescript": "^5.8.3",

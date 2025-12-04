@@ -11,3 +11,7 @@ export const images = new Bucket("images", {
 export const containerPhotos = new Bucket("container-photos", {
   public: true,
 });
+
+export const itemReceipts = new Bucket("item-receipts", {
+  public: true,
+});

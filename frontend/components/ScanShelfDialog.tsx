@@ -1,20 +1,21 @@
-import { useState, useRef, ChangeEvent, useEffect } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
+import { ContainerSelect } from "@/components/ContainerSelect";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Camera, Upload, Loader2, X, AlertCircle, Info } from "lucide-react";
-import { useToast } from "@/components/ui/use-toast";
-import { useBackend } from "@/lib/backend";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
 } from "@/components/ui/select";
+import { useToast } from "@/components/ui/use-toast";
+import { useBackend } from "@/lib/backend";
+import { useAuth } from "@clerk/clerk-react";
+import { AlertCircle, Camera, Info, Loader2, Upload, X } from "lucide-react";
+import { ChangeEvent, useEffect, useRef, useState } from "react";
 import type { Location } from "~backend/location/create";
-import { ContainerSelect } from "@/components/ContainerSelect";
 
 interface AnalyzedItem {
   name: string;
@@ -29,6 +30,14 @@ interface AnalyzedItem {
   containerId?: number | null;
 }
 
+interface BookAnalysis {
+  guessed_title: string;
+  guessed_author: string;
+  visual_signature: string;
+  shelf_location: string;
+  search_query: string;
+}
+
 interface ScanShelfDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -39,11 +48,15 @@ interface SelectedImage {
   previewUrl: string;
 }
 
+type AnalysisMode = 'items' | 'bookshelf';
+
 export function ScanShelfDialog({ open, onOpenChange }: ScanShelfDialogProps) {
+  const [analysisMode, setAnalysisMode] = useState<AnalysisMode>('items');
   const [selectedImages, setSelectedImages] = useState<SelectedImage[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [detectedItems, setDetectedItems] = useState<AnalyzedItem[]>([]);
   const [editedItems, setEditedItems] = useState<AnalyzedItem[]>([]);
+  const [detectedBooks, setDetectedBooks] = useState<BookAnalysis[]>([]);
   const [showCamera, setShowCamera] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [showPermissionHelp, setShowPermissionHelp] = useState(false);
@@ -56,6 +69,9 @@ export function ScanShelfDialog({ open, onOpenChange }: ScanShelfDialogProps) {
   const [stream, setStream] = useState<MediaStream | null>(null);
   const { toast } = useToast();
   const backend = useBackend();
+  const { getToken } = useAuth();
+  
+  const API_BASE_URL = import.meta.env.VITE_CLIENT_TARGET || 'http://localhost:4000';
 
   const startCamera = async () => {
     setCameraError(null);
@@ -223,17 +239,51 @@ export function ScanShelfDialog({ open, onOpenChange }: ScanShelfDialogProps) {
         imageUrls.push(fileUrl);
       }
 
-      const response = await backend.item.analyzeShelf({ imageUrls });
-
-      if (response.items.length === 0) {
-        toast({
-          title: "No Items Found",
-          description: "Could not identify any items in the images. Try clearer photos.",
-          variant: "destructive",
+      if (analysisMode === 'bookshelf') {
+        // Analyze as bookshelf
+        const token = await getToken();
+        const response = await fetch(`${API_BASE_URL}/items/analyze-bookshelf`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+          body: JSON.stringify({ imageUrls }),
         });
+
+        if (!response.ok) {
+          throw new Error('Failed to analyze bookshelf');
+        }
+
+        const { books } = await response.json();
+        
+        if (books.length === 0) {
+          toast({
+            title: "No Books Found",
+            description: "Could not identify any books in the images. Try clearer photos.",
+            variant: "destructive",
+          });
+        } else {
+          setDetectedBooks(books);
+          toast({
+            title: "Books Detected",
+            description: `Found ${books.length} book${books.length !== 1 ? 's' : ''} on the shelf`,
+          });
+        }
       } else {
-        setDetectedItems(response.items);
-        setEditedItems(response.items);
+        // Analyze as regular items
+        const response = await backend.item.analyzeShelf({ imageUrls });
+
+        if (response.items.length === 0) {
+          toast({
+            title: "No Items Found",
+            description: "Could not identify any items in the images. Try clearer photos.",
+            variant: "destructive",
+          });
+        } else {
+          setDetectedItems(response.items);
+          setEditedItems(response.items);
+        }
       }
     } catch (err) {
       console.error(err);
@@ -287,10 +337,12 @@ export function ScanShelfDialog({ open, onOpenChange }: ScanShelfDialogProps) {
     setSelectedImages([]);
     setDetectedItems([]);
     setEditedItems([]);
+    setDetectedBooks([]);
     setLocationId("");
     setContainerId("");
     setCameraError(null);
     setShowPermissionHelp(false);
+    setAnalysisMode('items');
     stopCamera();
   };
 
@@ -309,7 +361,76 @@ export function ScanShelfDialog({ open, onOpenChange }: ScanShelfDialogProps) {
         </DialogHeader>
 
         <div className="space-y-4">
-          {detectedItems.length > 0 ? (
+          {/* Mode Selector */}
+          {detectedItems.length === 0 && detectedBooks.length === 0 && (
+            <div className="space-y-2">
+              <Label>Analysis Type</Label>
+              <Select value={analysisMode} onValueChange={(value: AnalysisMode) => setAnalysisMode(value)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="items">General Items (food, supplies, etc.)</SelectItem>
+                  <SelectItem value="bookshelf">Bookshelf (identify books by title/author)</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                {analysisMode === 'items' 
+                  ? 'AI will identify items like food, cleaning supplies, and other household items.'
+                  : 'AI will identify books by their title, author, and position on the shelf.'}
+              </p>
+            </div>
+          )}
+
+          {/* Bookshelf Results */}
+          {detectedBooks.length > 0 ? (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-semibold">
+                  Found {detectedBooks.length} book{detectedBooks.length !== 1 ? 's' : ''}
+                </p>
+                <Button variant="outline" size="sm" onClick={resetDialog}>
+                  Start Over
+                </Button>
+              </div>
+
+              <div className="max-h-96 overflow-y-auto space-y-3">
+                {detectedBooks.map((book, index) => (
+                  <div key={index} className="border rounded-lg p-4 bg-white shadow-sm space-y-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1">
+                        <h4 className="font-semibold text-gray-900">
+                          {book.guessed_title || 'Unknown Title'}
+                        </h4>
+                        {book.guessed_author && (
+                          <p className="text-sm text-gray-600 mt-1">
+                            by {book.guessed_author}
+                          </p>
+                        )}
+                      </div>
+                      <span className="text-xs font-medium text-blue-600 bg-blue-50 px-2 py-1 rounded whitespace-nowrap">
+                        {book.shelf_location}
+                      </span>
+                    </div>
+
+                    {book.visual_signature && (
+                      <div className="flex items-center gap-2 text-xs text-gray-500">
+                        <span className="font-medium">Visual:</span>
+                        <span>{book.visual_signature}</span>
+                      </div>
+                    )}
+                    
+                    {book.search_query && (
+                      <div className="flex items-center gap-2 text-xs text-gray-500">
+                        <span className="font-medium">Search:</span>
+                        <span className="italic">{book.search_query}</span>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : detectedItems.length > 0 ? (
             <div className="space-y-4">
               <p className="text-sm text-muted-foreground">
                 Detected {detectedItems.length} item(s). Select a location and confirm to add them to your inventory:

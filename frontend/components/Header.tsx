@@ -1,14 +1,14 @@
-import { Menu, Settings } from "lucide-react";
-import { SignedIn, UserButton } from "@clerk/clerk-react";
 import { Button } from "@/components/ui/button";
 import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
+    Sheet,
+    SheetContent,
+    SheetHeader,
+    SheetTitle,
+    SheetTrigger,
 } from "@/components/ui/sheet";
 import { theme } from "@/lib/theme";
+import { SignedIn, UserButton } from "@clerk/clerk-react";
+import { Menu } from "lucide-react";
 
 interface HeaderProps {
   onNavigate?: (page: string) => void;
@@ -68,6 +68,72 @@ export function Header({ onNavigate }: HeaderProps) {
                   onMouseLeave={(e) => e.currentTarget.style.color = theme.colors.text.primary}
                 >
                   All Items
+                </button>
+                <button 
+                  onClick={() => onNavigate?.("unassigned-items")} 
+                  className="text-left transition-colors"
+                  style={{ 
+                    color: theme.colors.text.primary,
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.color = theme.colors.brand.primary}
+                  onMouseLeave={(e) => e.currentTarget.style.color = theme.colors.text.primary}
+                >
+                  Unassigned Items
+                </button>
+                <button 
+                  onClick={() => onNavigate?.("recent-items")} 
+                  className="text-left transition-colors"
+                  style={{ 
+                    color: theme.colors.text.primary,
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.color = theme.colors.brand.primary}
+                  onMouseLeave={(e) => e.currentTarget.style.color = theme.colors.text.primary}
+                >
+                  Recently Added Items
+                </button>
+                <button 
+                  onClick={() => onNavigate?.("expiring-items")} 
+                  className="text-left transition-colors"
+                  style={{ 
+                    color: theme.colors.text.primary,
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.color = theme.colors.brand.primary}
+                  onMouseLeave={(e) => e.currentTarget.style.color = theme.colors.text.primary}
+                >
+                  Expiring Items
+                </button>
+                <button 
+                  onClick={() => onNavigate?.("low-stock")} 
+                  className="text-left transition-colors"
+                  style={{ 
+                    color: theme.colors.text.primary,
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.color = theme.colors.brand.primary}
+                  onMouseLeave={(e) => e.currentTarget.style.color = theme.colors.text.primary}
+                >
+                  Low Stock
+                </button>
+                <button 
+                  onClick={() => onNavigate?.("favorites")} 
+                  className="text-left transition-colors"
+                  style={{ 
+                    color: theme.colors.text.primary,
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.color = theme.colors.brand.primary}
+                  onMouseLeave={(e) => e.currentTarget.style.color = theme.colors.text.primary}
+                >
+                  Favorite Items
+                </button>
+                <button 
+                  onClick={() => onNavigate?.("needs-confirmation")} 
+                  className="text-left transition-colors"
+                  style={{ 
+                    color: theme.colors.text.primary,
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.color = theme.colors.brand.primary}
+                  onMouseLeave={(e) => e.currentTarget.style.color = theme.colors.text.primary}
+                >
+                  Needs Confirmation
                 </button>
                 <button 
                   onClick={() => onNavigate?.("locations")} 

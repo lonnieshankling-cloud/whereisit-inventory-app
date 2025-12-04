@@ -1,3 +1,4 @@
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { api, APIError } from "encore.dev/api";
 import { secret } from "encore.dev/config";
 import { getAuthData } from "~encore/auth";
@@ -63,10 +64,10 @@ export const analyzeShelf = api<AnalyzeShelfRequest, AnalyzeShelfResponse>({
     Example: [{ "name": "Cereal", "description": "Box of cereal", "brand": "Cheerios", "color": "Yellow", "size": "18 oz", "quantity": 1, "expirationDate": null, "category": "Pantry", "notes": "Middle shelf, next to the pasta" }].
     Respond with an empty array [] if no items are found.`;
 
-  const requestParts: any[] = [{ text: prompt }];
+  const requestParts: any[] = [prompt];
 
   try {
-    // We must fetch each image, convert it to base64, and send the bytes.
+    // Fetch each image, convert it to base64, and add to request parts
     for (const url of req.imageUrls) {
       const mimeType = url.toLowerCase().includes(".png") ? "image/png" : "image/jpeg";
 
@@ -95,42 +96,25 @@ export const analyzeShelf = api<AnalyzeShelfRequest, AnalyzeShelfResponse>({
     throw APIError.internal("Failed to read image from storage");
   }
 
-  // 2. Make the direct 'fetch' call to the Google AI API
-  const googleApiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${GOOGLE_MODEL_NAME}:generateContent?key=${apiKey}`;
-
-  let response;
+  // Use the Google Generative AI SDK
   try {
-    response = await fetch(googleApiUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({ 
+      model: GOOGLE_MODEL_NAME,
+      generationConfig: {
+        responseMimeType: "application/json",
       },
-      body: JSON.stringify({
-        contents: [{
-          parts: requestParts,
-        }],
-        generationConfig: {
-          responseMimeType: "application/json",
-        },
-      }),
     });
 
-    if (!response.ok) {
-      const errorBody: any = await response.json();
-      console.error("Google AI API Error:", JSON.stringify(errorBody, null, 2));
-      throw new Error(`Google API responded with status ${response.status}: ${errorBody.error.message}`);
-    }
-
-    const data: any = await response.json();
-
-    // 3. Parse the JSON response from Google
-    const jsonText = data.candidates[0].content.parts[0].text;
+    const result = await model.generateContent(requestParts);
+    const response = await result.response;
+    const jsonText = response.text();
     const items = JSON.parse(jsonText);
 
     return { items };
 
   } catch (error: any) {
     console.error("Failed to call Google AI:", error.message);
-    throw APIError.internal("AI detection failed");
+    throw APIError.internal("AI detection failed: " + error.message);
   }
 });

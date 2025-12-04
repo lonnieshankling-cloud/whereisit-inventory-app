@@ -125,7 +125,7 @@ export const list = api<void, ListAllResponse>(
       FROM containers c
       LEFT JOIN locations l ON c.location_id = l.id
       WHERE c.household_id = ${householdId}
-      ORDER BY l.name, c.name
+      ORDER BY COALESCE(l.name, ''), c.name
     `;
 
     return {

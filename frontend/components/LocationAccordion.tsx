@@ -1,20 +1,33 @@
 import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
+    Accordion,
+    AccordionContent,
+    AccordionItem,
+    AccordionTrigger,
 } from "@/components/ui/accordion";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Plus, Trash2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { useToast } from "@/components/ui/use-toast";
+import { useBackend } from "@/lib/backend";
+import { Edit2, Plus, Trash2 } from "lucide-react";
 import { memo, useState } from "react";
 import type { Item } from "~backend/item/create";
 import type { Location } from "~backend/location/create";
@@ -36,6 +49,11 @@ interface LocationAccordionProps {
 
 export const LocationAccordion = memo(function LocationAccordion({ location, onDelete, onAddContainer, onItemUpdated, searchQuery = "" }: LocationAccordionProps) {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [showRenameDialog, setShowRenameDialog] = useState(false);
+  const [newName, setNewName] = useState(location.name);
+  const [isRenaming, setIsRenaming] = useState(false);
+  const { toast } = useToast();
+  const backend = useBackend();
   const isNotPlaced = location.id === -1;
 
   const handleDeleteClick = (e: React.MouseEvent) => {
@@ -47,6 +65,41 @@ export const LocationAccordion = memo(function LocationAccordion({ location, onD
     e.stopPropagation();
     if (onAddContainer) {
       onAddContainer(location.id);
+    }
+  };
+
+  const handleRenameClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setNewName(location.name);
+    setShowRenameDialog(true);
+  };
+
+  const handleRename = async () => {
+    if (!newName.trim() || newName === location.name) {
+      setShowRenameDialog(false);
+      return;
+    }
+
+    setIsRenaming(true);
+    try {
+      await backend.location.update(location.id, { name: newName.trim() });
+      toast({
+        title: "Success",
+        description: "Location renamed successfully",
+      });
+      setShowRenameDialog(false);
+      if (onItemUpdated) {
+        onItemUpdated();
+      }
+    } catch (error) {
+      console.error("Failed to rename location:", error);
+      toast({
+        title: "Error",
+        description: "Failed to rename location",
+        variant: "destructive",
+      });
+    } finally {
+      setIsRenaming(false);
     }
   };
 
@@ -66,6 +119,16 @@ export const LocationAccordion = memo(function LocationAccordion({ location, onD
               <span className="font-semibold text-lg">{location.name}</span>
               {!isNotPlaced && (
                 <div className="flex gap-2">
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    onClick={handleRenameClick}
+                    onKeyDown={(e) => e.key === 'Enter' && handleRenameClick(e as any)}
+                    className="h-8 w-8 p-0 inline-flex items-center justify-center rounded-md hover:bg-blue-100 hover:text-blue-600 cursor-pointer"
+                    title="Rename this location"
+                  >
+                    <Edit2 className="h-4 w-4" />
+                  </div>
                   {onAddContainer && (
                     <div
                       role="button"
@@ -115,6 +178,36 @@ export const LocationAccordion = memo(function LocationAccordion({ location, onD
           </AccordionContent>
         </AccordionItem>
       </Accordion>
+
+      <Dialog open={showRenameDialog} onOpenChange={setShowRenameDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Rename Location</DialogTitle>
+            <DialogDescription>
+              Enter a new name for "{location.name}"
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <Label htmlFor="location-name">Location Name</Label>
+            <Input
+              id="location-name"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleRename()}
+              placeholder="Enter location name"
+              className="mt-2"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowRenameDialog(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleRename} disabled={isRenaming || !newName.trim()}>
+              {isRenaming ? "Renaming..." : "Rename"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <AlertDialogContent>

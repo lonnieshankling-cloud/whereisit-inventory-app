@@ -1,22 +1,22 @@
-import { useEffect, useState, useMemo } from "react";
-import { ArrowLeft, MapPin, Package, Trash2, Move, CheckCircle } from "lucide-react";
+import { ItemCard } from "@/components/ItemCard";
+import { ItemDetailDialog } from "@/components/ItemDetailDialog";
 import { MoveItemsDialog } from "@/components/MoveItemsDialog";
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
 import { useBackend } from "@/lib/backend";
-import { ItemCard } from "@/components/ItemCard";
-import { ItemDetailDialog } from "@/components/ItemDetailDialog";
+import { ArrowLeft, CheckCircle, MapPin, Move, Package, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import type { Item } from "~backend/item/create";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 
 interface CategoryStat {
   category: string;
@@ -107,6 +107,32 @@ export function LocationDetailPage({ locationId, locationName, onBack }: Locatio
         variant: "destructive",
         title: "Error",
         description: "Failed to add to shopping list",
+      });
+    }
+  };
+
+  const handleQuantityChange = async (id: number, newQuantity: number) => {
+    if (newQuantity < 0) return;
+    
+    // Optimistic update
+    setItems((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, quantity: newQuantity } : item))
+    );
+
+    try {
+      await backend.item.updateQuantity({ id, quantity: newQuantity });
+      toast({
+        title: "Success",
+        description: `Quantity updated to ${newQuantity}`,
+      });
+    } catch (error) {
+      console.error("Failed to update quantity:", error);
+      // Revert on error
+      await loadItems();
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to update quantity",
       });
     }
   };
@@ -387,6 +413,7 @@ export function LocationDetailPage({ locationId, locationName, onBack }: Locatio
                         }}
                         onDelete={() => setItemToDelete(item.id)}
                         onConfirmLocation={handleConfirmLocation}
+                        onQuantityChange={handleQuantityChange}
                       />
                     ))}
                   </div>

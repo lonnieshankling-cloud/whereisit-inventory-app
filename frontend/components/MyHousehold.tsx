@@ -1,14 +1,32 @@
-import { useState, useEffect, ChangeEvent } from "react";
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { useToast } from "@/components/ui/use-toast";
 import { useBackend } from "@/lib/backend";
+import { Edit2, Package, RefreshCw, Trash2, UserMinus, X } from "lucide-react";
+import { ChangeEvent, useEffect, useState } from "react";
 import type { GetHouseholdResponse } from "~backend/household/get";
 import type { HouseholdInvitation } from "~backend/household/get_invitations";
 import type { HouseholdMember } from "~backend/household/get_members";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { useToast } from "@/components/ui/use-toast";
-import { Trash2, RefreshCw, X, UserMinus } from "lucide-react";
 
 export function MyHousehold() {
   const backend = useBackend();
@@ -26,6 +44,13 @@ export function MyHousehold() {
   const [resendingInvite, setResendingInvite] = useState<number | null>(null);
   const [cancelingInvite, setCancelingInvite] = useState<number | null>(null);
   const [leaving, setLeaving] = useState(false);
+  const [showRenameDialog, setShowRenameDialog] = useState(false);
+  const [newHouseholdName, setNewHouseholdName] = useState("");
+  const [renaming, setRenaming] = useState(false);
+  const [confirmRemoveMember, setConfirmRemoveMember] = useState<string | null>(null);
+  const [confirmLeave, setConfirmLeave] = useState(false);
+  const [confirmCancelInvite, setConfirmCancelInvite] = useState<number | null>(null);
+  const [totalItems, setTotalItems] = useState(0);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -53,6 +78,14 @@ export function MyHousehold() {
         if (response.household.owner_id === response.current_user_id) {
           const pendingResponse = await backend.household.getPendingInvitations();
           setPendingInvitations(pendingResponse.invitations);
+        }
+
+        // Load total item count
+        try {
+          const itemsResponse = await backend.item.listByPlacedStatus({ status: "all" });
+          setTotalItems(itemsResponse.items.length);
+        } catch (error) {
+          console.error("Failed to load item count", error);
         }
       }
     } catch (error) {
@@ -98,11 +131,56 @@ export function MyHousehold() {
     }
   };
 
+  const handleRenameHousehold = async () => {
+    if (!newHouseholdName.trim()) {
+      toast({
+        title: "Error",
+        description: "Please enter a household name",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setRenaming(true);
+    try {
+      await backend.household.rename({ name: newHouseholdName });
+      toast({
+        title: "Success",
+        description: "Household renamed successfully",
+      });
+      setShowRenameDialog(false);
+      await loadHousehold();
+    } catch (error) {
+      console.error("Failed to rename household", error);
+      toast({
+        title: "Error",
+        description: "Failed to rename household",
+        variant: "destructive",
+      });
+    } finally {
+      setRenaming(false);
+    }
+  };
+
+  const validateEmail = (email: string): boolean => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
+
   const handleSendInvite = async () => {
     if (!inviteEmail.trim()) {
       toast({
         title: "Error",
         description: "Please enter an email address",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!validateEmail(inviteEmail)) {
+      toast({
+        title: "Error",
+        description: "Please enter a valid email address",
         variant: "destructive",
       });
       return;
@@ -251,11 +329,36 @@ export function MyHousehold() {
         <div className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>Your Household: {household.household.name}</CardTitle>
-              <CardDescription>
-                Created on {new Date(household.household.created_at).toLocaleDateString()}
-              </CardDescription>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>Your Household: {household.household.name}</CardTitle>
+                  <CardDescription>
+                    Created on {new Date(household.household.created_at).toLocaleDateString()}
+                  </CardDescription>
+                </div>
+                {isOwner && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setNewHouseholdName(household.household!.name);
+                      setShowRenameDialog(true);
+                    }}
+                  >
+                    <Edit2 className="h-4 w-4 mr-2" />
+                    Rename
+                  </Button>
+                )}
+              </div>
             </CardHeader>
+            {totalItems > 0 && (
+              <CardContent>
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <Package className="h-5 w-5" />
+                  <span>{totalItems} item{totalItems !== 1 ? 's' : ''} in inventory</span>
+                </div>
+              </CardContent>
+            )}
           </Card>
 
           <Card>
@@ -300,7 +403,7 @@ export function MyHousehold() {
                     <Button
                       variant="destructive"
                       size="sm"
-                      onClick={() => handleRemoveMember(member.id)}
+                      onClick={() => setConfirmRemoveMember(member.id)}
                       disabled={removingMember === member.id}
                     >
                       <UserMinus className="h-4 w-4 mr-2" />
@@ -368,7 +471,7 @@ export function MyHousehold() {
                           <Button
                             variant="destructive"
                             size="sm"
-                            onClick={() => handleCancelInvitation(invitation.id)}
+                            onClick={() => setConfirmCancelInvite(invitation.id)}
                             disabled={cancelingInvite === invitation.id}
                           >
                             <X className="h-4 w-4 mr-2" />
@@ -394,7 +497,7 @@ export function MyHousehold() {
               <CardContent>
                 <Button
                   variant="destructive"
-                  onClick={handleLeaveHousehold}
+                  onClick={() => setConfirmLeave(true)}
                   disabled={leaving}
                 >
                   <Trash2 className="h-4 w-4 mr-2" />
@@ -459,6 +562,113 @@ export function MyHousehold() {
           </Card>
         </div>
       )}
+
+      {/* Rename Household Dialog */}
+      <Dialog open={showRenameDialog} onOpenChange={setShowRenameDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Rename Household</DialogTitle>
+            <DialogDescription>
+              Enter a new name for your household
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="new-household-name">Household Name</Label>
+              <Input
+                id="new-household-name"
+                value={newHouseholdName}
+                onChange={(e: ChangeEvent<HTMLInputElement>) => setNewHouseholdName(e.target.value)}
+                placeholder="Enter new household name"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowRenameDialog(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleRenameHousehold} disabled={renaming}>
+              {renaming ? "Renaming..." : "Rename"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Confirm Remove Member */}
+      <AlertDialog open={!!confirmRemoveMember} onOpenChange={(open) => !open && setConfirmRemoveMember(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove Member</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to remove this member from your household? They will lose access to all shared items and locations.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (confirmRemoveMember) {
+                  handleRemoveMember(confirmRemoveMember);
+                  setConfirmRemoveMember(null);
+                }
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Remove
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Confirm Leave Household */}
+      <AlertDialog open={confirmLeave} onOpenChange={setConfirmLeave}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Leave Household</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to leave this household? You will lose access to all shared items and locations. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                handleLeaveHousehold();
+                setConfirmLeave(false);
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Leave
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Confirm Cancel Invitation */}
+      <AlertDialog open={!!confirmCancelInvite} onOpenChange={(open) => !open && setConfirmCancelInvite(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancel Invitation</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to cancel this invitation? The recipient will no longer be able to join your household with this invitation.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (confirmCancelInvite) {
+                  handleCancelInvitation(confirmCancelInvite);
+                  setConfirmCancelInvite(null);
+                }
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Cancel Invitation
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

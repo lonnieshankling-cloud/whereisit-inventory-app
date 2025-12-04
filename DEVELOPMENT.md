@@ -1,6 +1,29 @@
 # Getting Started
 
-This project consists of an Encore application. Follow the steps below to get the app running locally.
+This project consists of an Encore backend application and a React Native mobile app. Follow the steps below to get the app running locally.
+
+## Shopping List Backend Sync
+
+The shopping list feature now supports backend synchronization! This allows household members to share shopping lists across devices.
+
+### Features:
+- ✅ **Automatic Sync**: Shopping list syncs with backend when online
+- ✅ **Offline-First**: All operations work offline and sync when connection is restored
+- ✅ **Pull-to-Refresh**: Manual sync by pulling down on the shopping list
+- ✅ **Sync Indicator**: Visual feedback when syncing with backend
+- ✅ **Multi-User**: Shopping lists are shared across household members
+
+### How It Works:
+1. All shopping list operations (add, update, delete) work offline-first in SQLite
+2. When online, changes automatically sync to the backend
+3. Backend serves as the source of truth for multi-user households
+4. Conflicts are resolved using last-write-wins from the server
+
+### Backend Endpoints:
+- `GET /shopping` - List all shopping items for household
+- `POST /shopping` - Add new shopping item
+- `PATCH /shopping/:id` - Update item (quantity, is_purchased)
+- `DELETE /shopping/:id` - Delete shopping item
 
 ## Prerequisites
 
@@ -62,6 +85,15 @@ encore gen client --target leap
 ```
 
 ## Deployment
+
+### Container Registries
+
+The application is configured to build and push Docker images to both Docker Hub and GitHub Container Registry (GHCR). See the [Container Registry Setup Guide](./CONTAINER_REGISTRY_SETUP.md) for detailed instructions on:
+
+- Setting up Docker Hub and GHCR access
+- Configuring GitHub Actions for automated builds
+- Managing container images and versions
+- Connecting registries to Encore Cloud
 
 ### Self-hosting
 See the [self-hosting instructions](https://encore.dev/docs/self-host/docker-build) for how to use encore build docker to create a Docker image and

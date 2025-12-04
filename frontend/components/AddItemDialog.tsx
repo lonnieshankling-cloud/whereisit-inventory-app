@@ -1,26 +1,26 @@
-import { useState, useEffect, useRef, ChangeEvent } from "react";
+import { Button } from "@/components/ui/button";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Button } from "@/components/ui/button";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
 } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/use-toast";
 import { useBackend } from "@/lib/backend";
-import type { Location } from "~backend/location/create";
-import { Upload, X, Loader2 } from "lucide-react";
 import { compressImage } from "@/lib/imageCompression";
+import { Loader2, Upload, X } from "lucide-react";
+import { ChangeEvent, useEffect, useRef, useState } from "react";
+import type { Location } from "~backend/location/create";
 import { ContainerSelect } from "./ContainerSelect";
 
 interface AddItemDialogProps {
@@ -35,6 +35,7 @@ export function AddItemDialog({ open, onOpenChange, initialName }: AddItemDialog
   const [locationId, setLocationId] = useState<string>("");
   const [containerId, setContainerId] = useState<string>("");
   const [quantity, setQuantity] = useState("1");
+  const [notes, setNotes] = useState("");
   const [expirationDate, setExpirationDate] = useState("");
   const [tags, setTags] = useState("");
   const [privacyLevel, setPrivacyLevel] = useState("household");
@@ -186,6 +187,7 @@ export function AddItemDialog({ open, onOpenChange, initialName }: AddItemDialog
         locationId: locationId && locationId !== "none" ? parseInt(locationId) : undefined,
         containerId: containerId && containerId !== "none" ? parseInt(containerId) : undefined,
         quantity: parseInt(quantity) || 1,
+        notes: notes.trim() || undefined,
         expirationDate: expirationDate || undefined,
         tags: tagsArray.length > 0 ? tagsArray : undefined,
         photoUrl: photoUrl || undefined,
@@ -202,6 +204,7 @@ export function AddItemDialog({ open, onOpenChange, initialName }: AddItemDialog
       setLocationId("");
       setContainerId("");
       setQuantity("1");
+      setNotes("");
       setExpirationDate("");
       setTags("");
       setPrivacyLevel("household");
@@ -354,6 +357,17 @@ export function AddItemDialog({ open, onOpenChange, initialName }: AddItemDialog
               className={quantityError ? "border-red-500 focus-visible:ring-red-500" : ""}
               aria-invalid={!!quantityError}
               aria-describedby={quantityError ? "quantity-error" : undefined}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="notes">Notes</Label>
+            <Textarea
+              id="notes"
+              value={notes}
+              onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setNotes(e.target.value)}
+              placeholder="Additional notes or details about this item"
+              rows={2}
             />
             {quantityError && (
               <p id="quantity-error" className="text-sm text-red-600">

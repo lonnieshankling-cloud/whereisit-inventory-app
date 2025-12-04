@@ -1,6 +1,8 @@
 import { useAuth } from "@clerk/clerk-react";
 import { useMemo } from "react";
-import backend from "~backend/client";
+import Client, { Local } from "~backend/client";
+
+const backend = new Client(Local);
 
 export function useBackend() {
   const { getToken, isSignedIn, isLoaded } = useAuth();

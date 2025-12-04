@@ -1,23 +1,26 @@
-import { useEffect, useState, ChangeEvent, KeyboardEvent, useMemo, useCallback, useRef } from "react";
-import { MapPin, Plus, Package } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/use-toast";
 import { useBackend } from "@/lib/backend";
 import { useInfiniteScroll } from "@/lib/useInfiniteScroll";
-import { ItemDetailDialog } from "./ItemDetailDialog";
-import { ManageContainersDialog } from "./ManageContainersDialog";
-import { StickySearchFilterBar } from "./StickySearchFilterBar";
-import { FilterOptions } from "./FiltersDialog";
-import { Skeleton } from "@/components/ui/skeleton";
-import {
-  LocationAccordion,
-  LocationWithContainers,
-} from "./LocationAccordion";
-import { ContainerWithItems } from "./ContainerList";
+import { Grid3x3, List, MapPin, Package, Plus } from "lucide-react";
+import { ChangeEvent, KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { Container } from "~backend/container/api";
 import type { Item } from "~backend/item/create";
 import type { Location } from "~backend/location/create";
-import type { Container } from "~backend/container/api";
+import { ContainerWithItems } from "./ContainerList";
+import { EmptyState } from "./EmptyState";
+import { FilterOptions } from "./FiltersDialog";
+import { ItemDetailDialog } from "./ItemDetailDialog";
+import {
+    LocationAccordion,
+    LocationWithContainers,
+} from "./LocationAccordion";
+import { LocationCard } from "./LocationCard";
+import { LocationStatsBar } from "./LocationStatsBar";
+import { ManageContainersDialog } from "./ManageContainersDialog";
+import { StickySearchFilterBar } from "./StickySearchFilterBar";
 
 interface LocationsListProps {
   externalSearchQuery?: string;
@@ -35,6 +38,8 @@ export function LocationsList({ externalSearchQuery = "" }: LocationsListProps) 
   const [preselectedLocationId, setPreselectedLocationId] = useState<number | undefined>();
   const [searchQuery, setSearchQuery] = useState("");
   const [filters, setFilters] = useState<FilterOptions>({});
+  const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
+  const [locationIcons, setLocationIcons] = useState<Record<number, string>>({});
   const { toast } = useToast();
   const backend = useBackend();
   const loadMoreRef = useRef<HTMLDivElement>(null);
@@ -67,7 +72,21 @@ export function LocationsList({ externalSearchQuery = "" }: LocationsListProps) 
 
   useEffect(() => {
     loadLocations();
+    loadLocationIcons();
   }, []);
+
+  const loadLocationIcons = () => {
+    const saved = localStorage.getItem('locationIcons');
+    if (saved) {
+      setLocationIcons(JSON.parse(saved));
+    }
+  };
+
+  const saveLocationIcon = (locationId: number, icon: string) => {
+    const updated = { ...locationIcons, [locationId]: icon };
+    setLocationIcons(updated);
+    localStorage.setItem('locationIcons', JSON.stringify(updated));
+  };
 
   const loadLocations = async () => {
     try {
@@ -283,16 +302,38 @@ export function LocationsList({ externalSearchQuery = "" }: LocationsListProps) 
           <MapPin className="h-5 w-5" />
           Locations
         </h2>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setShowContainersDialog(true)}
-          className="flex items-center gap-2"
-        >
-          <Package className="h-4 w-4" />
-          Manage Containers
-        </Button>
+        <div className="flex items-center gap-2">
+          <div className="flex rounded-md border border-gray-300 overflow-hidden">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setViewMode('list')}
+              className={`rounded-none border-r ${viewMode === 'list' ? 'bg-gray-100' : ''}`}
+            >
+              <List className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setViewMode('grid')}
+              className={`rounded-none ${viewMode === 'grid' ? 'bg-gray-100' : ''}`}
+            >
+              <Grid3x3 className="h-4 w-4" />
+            </Button>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowContainersDialog(true)}
+            className="flex items-center gap-2"
+          >
+            <Package className="h-4 w-4" />
+            Manage Containers
+          </Button>
+        </div>
       </div>
+
+      <LocationStatsBar locations={groupedData} />
 
       <StickySearchFilterBar
         searchQuery={searchQuery}
@@ -330,26 +371,49 @@ export function LocationsList({ externalSearchQuery = "" }: LocationsListProps) 
       </div>
 
       {groupedData.length === 0 ? (
-        <p className="text-gray-600">
-          No locations yet. Add locations like "Kitchen", "Garage", or "Attic" to organize your items!
-        </p>
+        <EmptyState
+          icon="folder"
+          title="No Locations Yet"
+          description="Start organizing your inventory by creating locations like Kitchen, Garage, or Attic. Locations help you track where everything is stored."
+          actionLabel="Add First Location"
+          onAction={() => document.querySelector<HTMLInputElement>('input[placeholder="Add new location..."]')?.focus()}
+        />
       ) : (
         <>
-          <div className="space-y-2 max-h-[60vh] overflow-y-auto">
-            {groupedData.map((location) => (
-              <LocationAccordion 
-                key={location.id} 
-                location={location} 
-                onDelete={handleDeleteLocation}
-                onAddContainer={(locationId) => {
-                  setPreselectedLocationId(locationId);
-                  setShowContainersDialog(true);
-                }}
-                onItemUpdated={reload}
-                searchQuery={externalSearchQuery || searchQuery}
-              />
-            ))}
-          </div>
+          {viewMode === 'list' ? (
+            <div className="space-y-2 max-h-[60vh] overflow-y-auto">
+              {groupedData.map((location) => (
+                <LocationAccordion 
+                  key={location.id} 
+                  location={location} 
+                  onDelete={handleDeleteLocation}
+                  onAddContainer={(locationId) => {
+                    setPreselectedLocationId(locationId);
+                    setShowContainersDialog(true);
+                  }}
+                  onItemUpdated={reload}
+                  searchQuery={externalSearchQuery || searchQuery}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-[60vh] overflow-y-auto">
+              {groupedData.map((location) => (
+                <LocationCard
+                  key={location.id}
+                  location={location}
+                  icon={locationIcons[location.id]}
+                  onIconChange={(icon) => saveLocationIcon(location.id, icon)}
+                  onDelete={handleDeleteLocation}
+                  onAddContainer={(locationId) => {
+                    setPreselectedLocationId(locationId);
+                    setShowContainersDialog(true);
+                  }}
+                  onItemUpdated={reload}
+                />
+              ))}
+            </div>
+          )}
           {hasMore && (
             <div ref={loadMoreRef} className="mt-4 text-center">
               {isLoadingMore && (

@@ -1,26 +1,26 @@
-import { useState, useEffect } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useBackend } from "@/lib/backend";
+import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/use-toast";
-import type { Item } from "~backend/item/create";
+import { useBackend } from "@/lib/backend";
+import { Loader2, Plus, Trash2 } from "lucide-react";
+import { useEffect, useState } from "react";
 import type { Container } from "~backend/container/api";
+import type { Item } from "~backend/item/create";
 import type { Location } from "~backend/location/create";
-import { Plus, Trash2, Loader2 } from "lucide-react";
 
 interface EditItemDialogProps {
   item: Item | null;
@@ -33,6 +33,7 @@ export function EditItemDialog({ item, open, onOpenChange, onItemUpdated }: Edit
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [quantity, setQuantity] = useState(1);
+  const [notes, setNotes] = useState("");
   const [tags, setTags] = useState("");
   const [locationId, setLocationId] = useState<string>("");
   const [containerId, setContainerId] = useState<string>("");
@@ -51,6 +52,7 @@ export function EditItemDialog({ item, open, onOpenChange, onItemUpdated }: Edit
       setName(item.name);
       setDescription(item.description || "");
       setQuantity(item.quantity);
+      setNotes(item.notes || "");
       setTags(item.tags.join(", "));
       setLocationId(item.locationId?.toString() || "unplaced");
       setContainerId(item.containerId?.toString() || "none");
@@ -139,6 +141,7 @@ export function EditItemDialog({ item, open, onOpenChange, onItemUpdated }: Edit
         name,
         description,
         quantity,
+        notes,
         tags: tagArray,
         locationId: locationId === "unplaced" ? null : parseInt(locationId, 10),
         containerId: containerId === "none" ? null : parseInt(containerId, 10),
@@ -227,6 +230,17 @@ export function EditItemDialog({ item, open, onOpenChange, onItemUpdated }: Edit
               min="0"
               value={quantity}
               onChange={(e) => setQuantity(parseInt(e.target.value, 10) || 0)}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="notes">Notes</Label>
+            <Textarea
+              id="notes"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Additional notes or details"
+              rows={2}
             />
           </div>
 
