@@ -1,9 +1,7 @@
-import { InfraConfig } from "encore.dev/infra";
-
 /**
  * Minimal infra config to satisfy Encore parser in cloud builds.
- * Extend with registry/build settings as needed.
+ * Avoid importing encore.dev/infra to prevent module resolution issues.
  */
-const infraConfig: InfraConfig = {};
+const infraConfig = {};
 
 export default infraConfig;
