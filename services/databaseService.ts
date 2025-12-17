@@ -53,8 +53,53 @@ export interface LocalShoppingItem {
   updated_at: number;
 }
 
+export interface LocalProject {
+  id: string;
+  name: string;
+  description?: string;
+  status: 'planning' | 'in_progress' | 'completed';
+  due_date?: string;
+  synced: number;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface LocalProjectItem {
+  id: string;
+  project_id: string;
+  inventory_item_id?: string;
+  name: string;
+  is_fulfilled: number; // 0 = false, 1 = true
+  notes?: string;
+  synced: number;
+  created_at: number;
+  updated_at: number;
+}
+
 class DatabaseService {
+    async deleteLocation(id: string): Promise<void> {
+      if (!this.db) throw new Error('Database not initialized');
+      await this.db.runAsync('DELETE FROM locations WHERE id = ?', [id]);
+    }
+
+    async unassignItemsFromLocation(locationId: string): Promise<void> {
+      if (!this.db) throw new Error('Database not initialized');
+      await this.db.runAsync('UPDATE items SET location_id = NULL, location_name = NULL WHERE location_id = ?', [locationId]);
+    }
   private db: SQLite.SQLiteDatabase | null = null;
+  private readonly defaultLocations: Array<{ id: string; name: string }> = [
+    { id: 'bedroom', name: 'Bedroom' },
+    { id: 'entertainment-room', name: 'Entertainment Room' },
+    { id: 'living-room', name: 'Living Room' },
+    { id: 'girls-room', name: 'Girls Room' },
+    { id: 'kitchen', name: 'Kitchen' },
+    { id: 'garage', name: 'Garage' },
+    { id: 'office', name: 'Office' },
+    { id: 'masters-bathroom', name: 'Masters Bathroom' },
+    { id: 'front-yard', name: 'Front Yard' },
+    { id: 'backyard', name: 'Backyard' },
+    { id: 'dining-room', name: 'Dining Room' },
+  ];
 
   async initialize() {
     if (this.db) {
@@ -184,6 +229,37 @@ class DatabaseService {
       );
     `);
 
+    // Projects table
+    await this.db.execAsync(`
+      CREATE TABLE IF NOT EXISTS projects (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT,
+        status TEXT NOT NULL DEFAULT 'planning',
+        due_date TEXT,
+        synced INTEGER DEFAULT 0,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+    `);
+
+    // Project Items table
+    await this.db.execAsync(`
+      CREATE TABLE IF NOT EXISTS project_items (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL,
+        inventory_item_id TEXT,
+        name TEXT NOT NULL,
+        is_fulfilled INTEGER DEFAULT 0,
+        notes TEXT,
+        synced INTEGER DEFAULT 0,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        FOREIGN KEY (project_id) REFERENCES projects (id) ON DELETE CASCADE,
+        FOREIGN KEY (inventory_item_id) REFERENCES items (id) ON DELETE SET NULL
+      );
+    `);
+
     // Create indices for performance optimization
     await this.db.execAsync(`
       CREATE INDEX IF NOT EXISTS idx_items_container_id ON items(container_id);
@@ -199,10 +275,16 @@ class DatabaseService {
       CREATE INDEX IF NOT EXISTS idx_shopping_updated_at ON shopping_list(updated_at DESC);
       CREATE INDEX IF NOT EXISTS idx_containers_name ON containers(name COLLATE NOCASE);
       CREATE INDEX IF NOT EXISTS idx_locations_name ON locations(name COLLATE NOCASE);
+      CREATE INDEX IF NOT EXISTS idx_project_items_project ON project_items(project_id);
+      CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(status);
+      CREATE INDEX IF NOT EXISTS idx_project_items_inventory ON project_items(inventory_item_id);
     `);
 
     // Migrate existing locations from items table to locations table
     await this.migrateLocations();
+
+    // Ensure the table is not empty so the UI always has locations to show
+    await this.ensureDefaultLocations();
   }
 
   private async migrateLocations(): Promise<void> {
@@ -418,6 +500,9 @@ class DatabaseService {
     if (!this.db) throw new Error('Database not initialized');
 
     try {
+      // Guarantee baseline locations even if the DB was initialized before seeding was added
+      await this.ensureDefaultLocations();
+
       // Get locations from locations table
       const locationsFromTable = await this.db.getAllAsync<{ id: string; name: string }>(
         'SELECT id, name FROM locations ORDER BY name ASC'
@@ -456,6 +541,33 @@ class DatabaseService {
       [location.id, location.name, now, now]
     );
     console.log('✅ Location inserted successfully');
+  }
+
+  private async ensureDefaultLocations(): Promise<void> {
+    if (!this.db) return;
+
+    try {
+      const countResult = await this.db.getFirstAsync<{ count: number }>(
+        'SELECT COUNT(*) as count FROM locations'
+      );
+      const existingCount = countResult?.count || 0;
+
+      if (existingCount > 0) {
+        return;
+      }
+
+      const now = Date.now();
+      for (const loc of this.defaultLocations) {
+        await this.db.runAsync(
+          'INSERT OR IGNORE INTO locations (id, name, created_at, updated_at) VALUES (?, ?, ?, ?)',
+          [loc.id, loc.name, now, now]
+        );
+        console.log(`✅ Seeded default location: ${loc.name}`);
+      }
+      console.log('✅ Default locations seeded');
+    } catch (error) {
+      console.error('❌ Error seeding default locations:', error);
+    }
   }
 
   async getContainer(id: string): Promise<LocalContainer | null> {
@@ -633,6 +745,103 @@ class DatabaseService {
     if (!this.db) throw new Error('Database not initialized');
 
     await this.db.runAsync('DELETE FROM shopping_list WHERE is_purchased = 1');
+  }
+
+  // ==================== PROJECTS ====================
+
+  async createProject(project: Omit<LocalProject, 'created_at' | 'updated_at'>): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+    const now = Date.now();
+    await this.db.runAsync(
+      `INSERT INTO projects (id, name, description, status, due_date, synced, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [project.id, project.name, project.description || null, project.status, project.due_date || null, project.synced, now, now]
+    );
+  }
+
+  async getAllProjects(): Promise<LocalProject[]> {
+    if (!this.db) throw new Error('Database not initialized');
+    return await this.db.getAllAsync<LocalProject>(
+      'SELECT * FROM projects ORDER BY created_at DESC'
+    );
+  }
+
+  async getProjectById(id: string): Promise<LocalProject | null> {
+    if (!this.db) throw new Error('Database not initialized');
+    const result = await this.db.getFirstAsync<LocalProject>(
+      'SELECT * FROM projects WHERE id = ?',
+      [id]
+    );
+    return result || null;
+  }
+
+  async updateProject(id: string, updates: Partial<LocalProject>): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+    const now = Date.now();
+    const fields = Object.keys(updates).filter(k => k !== 'id' && k !== 'created_at');
+    const values = fields.map(k => updates[k as keyof LocalProject]);
+    const setClause = fields.map(f => `${f} = ?`).join(', ');
+    
+    await this.db.runAsync(
+      `UPDATE projects SET ${setClause}, updated_at = ? WHERE id = ?`,
+      [...values, now, id]
+    );
+  }
+
+  async deleteProject(id: string): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+    await this.db.runAsync('DELETE FROM projects WHERE id = ?', [id]);
+  }
+
+  // ==================== PROJECT ITEMS ====================
+
+  async createProjectItem(item: Omit<LocalProjectItem, 'created_at' | 'updated_at'>): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+    const now = Date.now();
+    await this.db.runAsync(
+      `INSERT INTO project_items (id, project_id, inventory_item_id, name, is_fulfilled, notes, synced, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [item.id, item.project_id, item.inventory_item_id || null, item.name, item.is_fulfilled, item.notes || null, item.synced, now, now]
+    );
+  }
+
+  async getProjectItems(projectId: string): Promise<LocalProjectItem[]> {
+    if (!this.db) throw new Error('Database not initialized');
+    return await this.db.getAllAsync<LocalProjectItem>(
+      'SELECT * FROM project_items WHERE project_id = ? ORDER BY created_at ASC',
+      [projectId]
+    );
+  }
+
+  async updateProjectItem(id: string, updates: Partial<LocalProjectItem>): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+    const now = Date.now();
+    const fields = Object.keys(updates).filter(k => k !== 'id' && k !== 'created_at');
+    const values = fields.map(k => updates[k as keyof LocalProjectItem]);
+    const setClause = fields.map(f => `${f} = ?`).join(', ');
+    
+    await this.db.runAsync(
+      `UPDATE project_items SET ${setClause}, updated_at = ? WHERE id = ?`,
+      [...values, now, id]
+    );
+  }
+
+  async deleteProjectItem(id: string): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+    await this.db.runAsync('DELETE FROM project_items WHERE id = ?', [id]);
+  }
+
+  async getProjectProgress(projectId: string): Promise<{ total: number; fulfilled: number }> {
+    if (!this.db) throw new Error('Database not initialized');
+    const result = await this.db.getFirstAsync<{ total: number; fulfilled: number }>(
+      `SELECT 
+        COUNT(*) as total,
+        SUM(CASE WHEN is_fulfilled = 1 THEN 1 ELSE 0 END) as fulfilled
+       FROM project_items 
+       WHERE project_id = ?`,
+      [projectId]
+    );
+    return result || { total: 0, fulfilled: 0 };
   }
 }
 

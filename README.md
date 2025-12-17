@@ -59,6 +59,14 @@ This command will move the starter code to the **app-example** directory and cre
 
 ## Learn more
 
+## Release checklist (Play Store)
+
+- Set `EXPO_PUBLIC_BACKEND_URL` in `.env` to your public HTTPS backend (no localhost/LAN).
+- Bump `expo.version` and `expo.android.versionCode` in `app.json`.
+- Build a release: `eas build -p android --profile production` (or `npx expo run:android --variant release` if you prebuild).
+- Test the release build on-device: household flows, camera/photo, AI calls against the production backend.
+- Confirm icons/splash/name and privacy policy/Data Safety answers are ready for Play Console.
+
 To learn more about developing your project with Expo, look at the following resources:
 
 - [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).

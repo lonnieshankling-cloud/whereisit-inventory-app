@@ -43,6 +43,7 @@ export const auth = authHandler<AuthParams, AuthData>(
         email: user.emailAddresses[0]?.emailAddress ?? null,
       };
     } catch (err) {
+      console.error("[Auth] Token verification failed:", err);
       throw APIError.unauthenticated("invalid token", err as Error);
     }
   }

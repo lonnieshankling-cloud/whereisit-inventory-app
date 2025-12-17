@@ -1,5 +1,5 @@
 import * as Haptics from 'expo-haptics';
-import { Box, Camera, Package, Plus, X } from 'lucide-react-native';
+import { Box, Camera, Package, Plus, Trash2, X } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 import {
     Alert,
@@ -13,8 +13,9 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
-import { MobileCamera } from '../components/MobileCamera';
-import { databaseService, LocalContainer, LocalItem } from '../services/databaseService';
+import { MobileCamera } from '../../components/MobileCamera';
+import { databaseService, LocalContainer, LocalItem } from '../../services/databaseService';
+import ItemDetailScreen from './ItemDetailScreen';
 
 interface ContainerManagementScreenProps {
   onClose?: () => void;
@@ -26,24 +27,65 @@ export default function ContainerManagementScreen({ onClose }: ContainerManageme
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedContainer, setSelectedContainer] = useState<LocalContainer | null>(null);
   const [containerItems, setContainerItems] = useState<LocalItem[]>([]);
+  const [containerItemCounts, setContainerItemCounts] = useState<Record<string, number>>({});
+  const [selectedItem, setSelectedItem] = useState<LocalItem | null>(null);
+  const [showItemDetail, setShowItemDetail] = useState(false);
   
   // Add container form state
   const [newContainerName, setNewContainerName] = useState('');
+  const [newContainerLocation, setNewContainerLocation] = useState<string | null>(null);
   const [newContainerPhoto, setNewContainerPhoto] = useState<string | null>(null);
   const [showCamera, setShowCamera] = useState(false);
+  const [cameraModeForAdd, setCameraModeForAdd] = useState<'add' | 'edit'>('add');
+
+  // Edit container form state
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingContainer, setEditingContainer] = useState<LocalContainer | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editLocation, setEditLocation] = useState<string | null>(null);
+  const [editPhoto, setEditPhoto] = useState<string | null>(null);
+  const [editCameraMode, setEditCameraMode] = useState<'add' | 'edit'>('add');
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+
+  const [locations, setLocations] = useState<Array<{id: string, name: string}>>([]);
 
   useEffect(() => {
     loadContainers();
+    loadLocations();
   }, []);
+
+  const loadLocations = async () => {
+    try {
+      await databaseService.initialize();
+      const allLocations = await databaseService.getAllLocations();
+      setLocations(allLocations);
+    } catch (error) {
+      console.error('Failed to load locations:', error);
+    }
+  };
 
   const loadContainers = async () => {
     try {
       await databaseService.initialize();
       const allContainers = await databaseService.getAllContainers();
       setContainers(allContainers);
+      
+      // Load item counts for each container
+      const counts: Record<string, number> = {};
+      for (const container of allContainers) {
+        const items = await databaseService.getItemsByContainer(container.id);
+        counts[container.id] = items.length;
+      }
+      setContainerItemCounts(counts);
     } catch (error) {
       console.error('Failed to load containers:', error);
     }
+  };
+
+  const refreshContainerItems = async (containerId: string) => {
+    const items = await databaseService.getItemsByContainer(containerId);
+    setContainerItems(items);
+    setContainerItemCounts((prev) => ({ ...prev, [containerId]: items.length }));
   };
 
   const onRefresh = async () => {
@@ -53,6 +95,11 @@ export default function ContainerManagementScreen({ onClose }: ContainerManageme
   };
 
   const handleAddContainer = async () => {
+    if (!newContainerLocation) {
+      Alert.alert('Error', 'Please select a location for this container');
+      return;
+    }
+
     if (!newContainerName.trim()) {
       Alert.alert('Error', 'Please enter a container name');
       return;
@@ -63,6 +110,7 @@ export default function ContainerManagementScreen({ onClose }: ContainerManageme
       await databaseService.createContainer({
         id: containerId,
         name: newContainerName.trim(),
+        location_id: newContainerLocation,
         local_photo_uri: newContainerPhoto || undefined,
         synced: 0,
       });
@@ -70,6 +118,7 @@ export default function ContainerManagementScreen({ onClose }: ContainerManageme
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setShowAddModal(false);
       setNewContainerName('');
+      setNewContainerLocation(null);
       setNewContainerPhoto(null);
       await loadContainers();
       Alert.alert('Success', 'Container created!');
@@ -82,8 +131,7 @@ export default function ContainerManagementScreen({ onClose }: ContainerManageme
   const handleContainerPress = async (container: LocalContainer) => {
     try {
       setSelectedContainer(container);
-      const items = await databaseService.getItemsByContainer(container.id);
-      setContainerItems(items);
+      await refreshContainerItems(container.id);
     } catch (error) {
       console.error('Failed to load container items:', error);
     }
@@ -121,27 +169,91 @@ export default function ContainerManagementScreen({ onClose }: ContainerManageme
   };
 
   const handlePhotoTaken = (uri: string) => {
-    setNewContainerPhoto(uri);
+    if (cameraModeForAdd === 'edit') {
+      setEditPhoto(uri);
+    } else {
+      setNewContainerPhoto(uri);
+    }
     setShowCamera(false);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
   };
 
-  const renderContainer = ({ item }: { item: LocalContainer }) => {
-    const [itemCount, setItemCount] = useState(0);
+  const handleOpenEditModal = (container: LocalContainer) => {
+    setEditingContainer(container);
+    setEditName(container.name);
+    setEditLocation(container.location_id || null);
+    setEditPhoto(container.local_photo_uri || container.photo_url || null);
+    setEditCameraMode('edit');
+    setShowEditModal(true);
+  };
 
-    useEffect(() => {
-      const loadCount = async () => {
-        const items = await databaseService.getItemsByContainer(item.id);
-        setItemCount(items.length);
-      };
-      loadCount();
-    }, []);
+  const handleUpdateContainer = async () => {
+    if (!editName.trim()) {
+      Alert.alert('Error', 'Please enter a container name');
+      return;
+    }
+
+    if (!editingContainer) return;
+
+    setIsSavingEdit(true);
+    try {
+      await databaseService.updateContainer(editingContainer.id, {
+        name: editName.trim(),
+        location_id: editLocation || undefined,
+        local_photo_uri: editPhoto || undefined,
+        synced: 0,
+      });
+
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setShowEditModal(false);
+      setEditingContainer(null);
+      setEditName('');
+      setEditLocation(null);
+      setEditPhoto(null);
+      await loadContainers();
+      Alert.alert('Success', 'Container updated!');
+    } catch (error) {
+      console.error('Failed to update container:', error);
+      Alert.alert('Error', 'Failed to update container');
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
+  const handleDeleteFromEdit = async () => {
+    if (!editingContainer) return;
+    setShowEditModal(false);
+    handleDeleteContainer(editingContainer);
+  };
+
+  // Group containers by location
+  const groupContainersByLocation = () => {
+    const grouped: Record<string, LocalContainer[]> = {};
+    
+    containers.forEach((container) => {
+      const locationId = container.location_id || 'unassigned';
+      if (!grouped[locationId]) {
+        grouped[locationId] = [];
+      }
+      grouped[locationId].push(container);
+    });
+
+    return grouped;
+  };
+
+  const getLocationName = (locationId: string) => {
+    if (locationId === 'unassigned') return 'Unassigned';
+    return locations.find(loc => loc.id === locationId)?.name || locationId;
+  };
+
+  const renderContainer = ({ item }: { item: LocalContainer }) => {
+    const itemCount = containerItemCounts[item.id] || 0;
 
     return (
       <TouchableOpacity
         style={styles.containerCard}
         onPress={() => handleContainerPress(item)}
-        onLongPress={() => handleDeleteContainer(item)}
+        onLongPress={() => handleOpenEditModal(item)}
       >
         <View style={styles.containerImageContainer}>
           {item.local_photo_uri || item.photo_url ? (
@@ -165,8 +277,29 @@ export default function ContainerManagementScreen({ onClose }: ContainerManageme
     );
   };
 
+  const handleItemTap = (item: LocalItem) => {
+    setSelectedItem(item);
+    setShowItemDetail(true);
+  };
+
+  const handleItemUpdated = async () => {
+    if (selectedContainer) {
+      await refreshContainerItems(selectedContainer.id);
+    }
+    await loadContainers();
+  };
+
+  const handleItemDeleted = async () => {
+    setShowItemDetail(false);
+    setSelectedItem(null);
+    if (selectedContainer) {
+      await refreshContainerItems(selectedContainer.id);
+    }
+    await loadContainers();
+  };
+
   const renderItem = ({ item }: { item: LocalItem }) => (
-    <View style={styles.itemCard}>
+    <TouchableOpacity style={styles.itemCard} onPress={() => handleItemTap(item)}>
       {(item.local_photo_uri || item.photo_url) && (
         <Image
           source={{ uri: item.local_photo_uri || item.photo_url }}
@@ -181,7 +314,7 @@ export default function ContainerManagementScreen({ onClose }: ContainerManageme
           </Text>
         )}
       </View>
-    </View>
+    </TouchableOpacity>
   );
 
   return (
@@ -194,17 +327,38 @@ export default function ContainerManagementScreen({ onClose }: ContainerManageme
           </TouchableOpacity>
         )}
         <Text style={styles.headerTitle}>Containers ({containers.length})</Text>
-        <TouchableOpacity onPress={() => setShowAddModal(true)} style={styles.addButton}>
+        <TouchableOpacity onPress={() => {
+          setNewContainerName('');
+          setNewContainerLocation(null);
+          setNewContainerPhoto(null);
+          setShowAddModal(true);
+        }} style={styles.addButton}>
           <Plus color="#3B82F6" size={24} />
         </TouchableOpacity>
       </View>
 
-      {/* Containers List */}
+      {/* Containers List - Grouped by Location */}
       <FlatList
-        data={containers}
-        renderItem={renderContainer}
-        keyExtractor={(item) => item.id}
+        data={Object.entries(groupContainersByLocation()).flatMap(([locationId, locationContainers]) => [
+          { type: 'location', id: locationId, name: getLocationName(locationId) } as const,
+          ...locationContainers.map(container => ({ type: 'container', ...container } as const)),
+        ])}
+        renderItem={(props) => {
+          const item = props.item;
+          if (item.type === 'location') {
+            return (
+              <View style={styles.locationSection}>
+                <Text style={styles.locationHeader}>{item.name}</Text>
+              </View>
+            );
+          }
+          return renderContainer({ item });
+        }}
+        keyExtractor={(item, index) => 
+          item.type === 'location' ? `location-${item.id}` : item.id
+        }
         numColumns={2}
+        columnWrapperStyle={{ gap: 12, paddingHorizontal: 16 }}
         contentContainerStyle={containers.length === 0 ? styles.listContentEmpty : styles.listContent}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         ListEmptyComponent={
@@ -229,7 +383,10 @@ export default function ContainerManagementScreen({ onClose }: ContainerManageme
 
           <View style={styles.form}>
             {/* Photo */}
-            <TouchableOpacity style={styles.photoButton} onPress={() => setShowCamera(true)}>
+            <TouchableOpacity style={styles.photoButton} onPress={() => {
+              setCameraModeForAdd('add');
+              setShowCamera(true);
+            }}>
               {newContainerPhoto ? (
                 <Image source={{ uri: newContainerPhoto }} style={styles.photoPreview} />
               ) : (
@@ -249,6 +406,35 @@ export default function ContainerManagementScreen({ onClose }: ContainerManageme
                 onChangeText={setNewContainerName}
                 placeholder="e.g., Storage Box #1, Basement Bin"
                 placeholderTextColor="#9CA3AF"
+              />
+            </View>
+
+            {/* Location */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Location *</Text>
+              <FlatList
+                data={locations}
+                keyExtractor={(item) => item.id}
+                scrollEnabled={false}
+                renderItem={({ item }) => (
+                  <TouchableOpacity
+                    style={[
+                      styles.locationItem,
+                      newContainerLocation === item.id && styles.locationItemSelected,
+                    ]}
+                    onPress={() => setNewContainerLocation(item.id)}
+                  >
+                    <Text style={[
+                      styles.locationItemText,
+                      newContainerLocation === item.id && styles.locationItemTextSelected,
+                    ]}>
+                      {item.name}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+                ListEmptyComponent={
+                  <Text style={styles.noLocationsText}>No locations available</Text>
+                }
               />
             </View>
 
@@ -296,6 +482,139 @@ export default function ContainerManagementScreen({ onClose }: ContainerManageme
           />
         </View>
       </Modal>
+
+      {selectedItem && (
+        <ItemDetailScreen
+          item={selectedItem}
+          visible={showItemDetail}
+          onClose={() => {
+            setShowItemDetail(false);
+            setSelectedItem(null);
+          }}
+          onItemUpdated={handleItemUpdated}
+          onItemDeleted={handleItemDeleted}
+        />
+      )}
+
+      {/* Edit Container Modal */}
+      <Modal
+        visible={showEditModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <TouchableOpacity onPress={() => {
+              setShowEditModal(false);
+              setEditingContainer(null);
+              setEditName('');
+              setEditLocation(null);
+              setEditPhoto(null);
+            }}>
+              <X color="#111827" size={24} />
+            </TouchableOpacity>
+            <Text style={styles.modalTitle}>Edit Container</Text>
+            <View style={{ width: 24 }} />
+          </View>
+
+          <View style={[styles.form, { flex: 1 }]}>
+            {/* Photo */}
+            <TouchableOpacity style={styles.photoButton} onPress={() => {
+              setCameraModeForAdd('edit');
+              setShowCamera(true);
+            }}>
+              {editPhoto ? (
+                <Image source={{ uri: editPhoto }} style={styles.photoPreview} />
+              ) : (
+                <View style={styles.photoPlaceholder}>
+                  <Camera color="#9CA3AF" size={32} />
+                  <Text style={styles.photoPlaceholderText}>Add Photo</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+
+            {/* Clear Photo Button */}
+            {editPhoto && (
+              <TouchableOpacity 
+                style={styles.clearPhotoButton}
+                onPress={() => setEditPhoto(null)}
+              >
+                <Text style={styles.clearPhotoButtonText}>Remove Photo</Text>
+              </TouchableOpacity>
+            )}
+
+            {/* Name */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Container Name</Text>
+              <TextInput
+                style={styles.input}
+                value={editName}
+                onChangeText={setEditName}
+                placeholder="e.g., Storage Box #1, Basement Bin"
+                placeholderTextColor="#9CA3AF"
+              />
+            </View>
+
+            {/* Location Dropdown */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Location *</Text>
+              <FlatList
+                data={locations}
+                keyExtractor={(item) => item.id}
+                scrollEnabled={false}
+                renderItem={({ item }) => (
+                  <TouchableOpacity
+                    style={[
+                      styles.locationItem,
+                      editLocation === item.id && styles.locationItemSelected,
+                    ]}
+                    onPress={() => setEditLocation(item.id)}
+                  >
+                    <Text style={[
+                      styles.locationItemText,
+                      editLocation === item.id && styles.locationItemTextSelected,
+                    ]}>
+                      {item.name}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+                ListEmptyComponent={
+                  <Text style={styles.noLocationsText}>No locations available</Text>
+                }
+              />
+            </View>
+          </View>
+
+          {/* Action Buttons */}
+          <View style={styles.editModalFooter}>
+            <TouchableOpacity 
+              style={[styles.deleteButton, styles.footerButton]}
+              onPress={handleDeleteFromEdit}
+              disabled={isSavingEdit}
+            >
+              <Trash2 color="#EF4444" size={18} />
+              <Text style={styles.deleteButtonText}>Delete</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={[styles.saveButton, styles.footerButton]}
+              onPress={handleUpdateContainer}
+              disabled={isSavingEdit}
+            >
+              <Text style={styles.saveButtonText}>
+                {isSavingEdit ? 'Saving...' : 'Save'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Camera Modal */}
+          <MobileCamera 
+            visible={showCamera}
+            onClose={() => setShowCamera(false)}
+            onImageCaptured={handlePhotoTaken}
+          />
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -323,7 +642,7 @@ const styles = StyleSheet.create({
     padding: 8,
   },
   headerTitle: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: '700',
     color: '#111827',
   },
@@ -369,12 +688,13 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   containerName: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
     color: '#111827',
+    flexWrap: 'wrap',
   },
   containerItemCount: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#6B7280',
   },
   emptyContainer: {
@@ -384,13 +704,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 40,
   },
   emptyText: {
-    fontSize: 20,
+    fontSize: 16,
     fontWeight: '600',
     color: '#374151',
     marginTop: 16,
   },
   emptySubtext: {
-    fontSize: 14,
+    fontSize: 13,
     color: '#9CA3AF',
     textAlign: 'center',
     marginTop: 8,
@@ -410,7 +730,7 @@ const styles = StyleSheet.create({
     borderBottomColor: '#E5E7EB',
   },
   modalTitle: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '700',
     color: '#111827',
   },
@@ -439,14 +759,14 @@ const styles = StyleSheet.create({
   },
   photoPlaceholderText: {
     marginTop: 8,
-    fontSize: 14,
+    fontSize: 13,
     color: '#9CA3AF',
   },
   inputGroup: {
     marginBottom: 16,
   },
   label: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
     color: '#374151',
     marginBottom: 8,
@@ -457,7 +777,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 10,
-    fontSize: 16,
+    fontSize: 14,
     color: '#111827',
     backgroundColor: '#fff',
   },
@@ -470,7 +790,7 @@ const styles = StyleSheet.create({
   },
   saveButtonText: {
     color: '#fff',
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
   },
   detailsContainer: {
@@ -489,7 +809,7 @@ const styles = StyleSheet.create({
     borderBottomColor: '#E5E7EB',
   },
   detailsTitle: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '700',
     color: '#111827',
   },
@@ -520,13 +840,112 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   itemName: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
     color: '#111827',
     marginBottom: 4,
+    flexWrap: 'wrap',
   },
   itemDescription: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#6B7280',
+    flexWrap: 'wrap',
+  },
+  clearPhotoButton: {
+    marginBottom: 16,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    backgroundColor: '#FEE2E2',
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  clearPhotoButtonText: {
+    color: '#DC2626',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  locationDropdownWrapper: {
+    marginBottom: 0,
+  },
+  locationDropdown: {
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: '#fff',
+    justifyContent: 'center',
+  },
+  locationDropdownText: {
+    fontSize: 14,
+    color: '#111827',
+  },
+  locationItem: {
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+    backgroundColor: '#F9FAFB',
+  },
+  locationItemSelected: {
+    backgroundColor: '#DBEAFE',
+  },
+  locationItemText: {
+    fontSize: 14,
+    color: '#111827',
+  },
+  locationItemTextSelected: {
+    color: '#1E40AF',
+    fontWeight: '600',
+  },
+  noLocationsText: {
+    fontSize: 13,
+    color: '#9CA3AF',
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    textAlign: 'center',
+  },
+  editModalFooter: {
+    flexDirection: 'row',
+    gap: 12,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    paddingBottom: 32,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+    backgroundColor: '#fff',
+  },
+  footerButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  deleteButton: {
+    backgroundColor: '#FEE2E2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+  },
+  deleteButtonText: {
+    color: '#DC2626',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  locationSection: {
+    width: '100%',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    paddingTop: 16,
+    marginTop: 8,
+  },
+  locationHeader: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1F2937',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
 });

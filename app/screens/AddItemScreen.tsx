@@ -1,7 +1,7 @@
 import { logBarcodeScanned, logItemAdded, logPhotoTaken } from '@/utils/analytics';
 import { canAddItem, FREE_ITEM_LIMIT, getRemainingItems } from '@/utils/premium';
 import * as Haptics from 'expo-haptics';
-import { Barcode, Camera, Package, X } from 'lucide-react-native';
+import { Barcode, Camera, Package, Plus, X } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 import {
     Alert,
@@ -15,17 +15,21 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
-import { MobileBarcodeScannerModal } from '../components/MobileBarcodeScannerModal';
-import { MobileCamera } from '../components/MobileCamera';
-import { databaseService } from '../services/databaseService';
+import { MobileBarcodeScannerModal } from '../../components/MobileBarcodeScannerModal';
+import { MobileCamera } from '../../components/MobileCamera';
+import { DetectedItem, MobileShelfAnalyzer } from '../../components/MobileShelfAnalyzer';
+import { databaseService } from '../../services/databaseService';
 import PaywallScreen from './PaywallScreen';
 
 interface AddItemScreenProps {
   onClose?: () => void;
   onItemAdded?: () => void;
+  initialLocationId?: string;
+  initialContainerId?: string;
+  initialContainerName?: string;
 }
 
-export default function AddItemScreen({ onClose, onItemAdded }: AddItemScreenProps = {}) {
+export default function AddItemScreen({ onClose, onItemAdded, initialLocationId, initialContainerId, initialContainerName }: AddItemScreenProps = {}) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [barcode, setBarcode] = useState('');
@@ -34,39 +38,92 @@ export default function AddItemScreen({ onClose, onItemAdded }: AddItemScreenPro
   const [purchasePrice, setPurchasePrice] = useState('');
   const [purchaseStore, setPurchaseStore] = useState('');
   const [imageUri, setImageUri] = useState<string | null>(null);
-  const [containerId, setContainerId] = useState<string | null>(null);
-  const [containerName, setContainerName] = useState<string>('');
-  const [locationId, setLocationId] = useState<string | null>(null);
+  const [receiptUri, setReceiptUri] = useState<string | null>(null);
+  const [containerId, setContainerId] = useState<string | null>(initialContainerId || null);
+  const [containerName, setContainerName] = useState<string>(initialContainerName || '');
+  const [locationId, setLocationId] = useState<string | null>(initialLocationId || null);
   const [locationName, setLocationName] = useState<string>('');
   
   const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
   const [showCamera, setShowCamera] = useState(false);
+  const [showReceiptCamera, setShowReceiptCamera] = useState(false);
+  const [showShelfAnalyzer, setShowShelfAnalyzer] = useState(false);
   const [showContainerPicker, setShowContainerPicker] = useState(false);
   const [showLocationPicker, setShowLocationPicker] = useState(false);
   const [showPaywall, setShowPaywall] = useState(false);
-  const [containers, setContainers] = useState<Array<{id: string, name: string}>>([]);
-  const [locations] = useState<Array<{id: string, name: string}>>([
-    { id: 'bedroom', name: 'Bedroom' },
-    { id: 'entertainment-room', name: 'Entertainment Room' },
-    { id: 'living-room', name: 'Living Room' },
-    { id: 'girls-room', name: 'Girls Room' },
-    { id: 'kitchen', name: 'Kitchen' },
-    { id: 'garage', name: 'Garage' },
-    { id: 'office', name: 'Office' },
-    { id: 'masters-bathroom', name: 'Masters Bathroom' },
-    { id: 'front-yard', name: 'Front Yard' },
-    { id: 'backyard', name: 'Backyard' },
-    { id: 'dining-room', name: 'Dining Room' },
-  ]);
+  const [showCreateContainer, setShowCreateContainer] = useState(false);
+  const [newContainerName, setNewContainerName] = useState('');
+  const [containers, setContainers] = useState<Array<{id: string; name: string; location_id?: string | null}>>([]);
+  const [locations, setLocations] = useState<Array<{id: string; name: string}>>([]);
   const [isSaving, setIsSaving] = useState(false);
 
+  const filteredContainers = locationId
+    ? containers.filter(c => c.location_id === locationId)
+    : [];
+
+  const handleDetectedItems = (items: DetectedItem[]) => {
+    if (!items?.length) {
+      Alert.alert('No items found', 'Try another photo with better lighting.');
+      setShowShelfAnalyzer(false);
+      return;
+    }
+
+    const first = items[0];
+    if (first.name) setName(first.name);
+    if (first.description) setDescription(first.description);
+    if (first.photoUri) setImageUri(first.photoUri);
+    if (first.containerId) setContainerId(first.containerId);
+    if (first.containerName) setContainerName(first.containerName);
+    if (first.locationId) setLocationId(first.locationId);
+    if (first.locationName) setLocationName(first.locationName);
+
+    setShowShelfAnalyzer(false);
+    Alert.alert(
+      'Analysis complete',
+      'Fields have been pre-filled from the photo. Save now or review/edit first?',
+      [
+        { text: 'Review first', style: 'cancel' },
+        {
+          text: 'Save now',
+          onPress: () => {
+            // Give React state a tick to settle before saving
+            setTimeout(() => {
+              handleSave();
+            }, 50);
+          },
+        },
+      ]
+    );
+  };
+
   useEffect(() => {
-    // Initialize database service and load containers
+    // Prefill when opening with a specific container/location
+    if (initialContainerId !== undefined) {
+      setContainerId(initialContainerId || null);
+    }
+    if (initialContainerName !== undefined) {
+      setContainerName(initialContainerName || '');
+    }
+    if (initialLocationId !== undefined) {
+      setLocationId(initialLocationId || null);
+      // Set location name from loaded locations
+      const location = locations.find(loc => loc.id === initialLocationId);
+      if (location) {
+        setLocationName(location.name);
+      }
+    }
+  }, [initialContainerId, initialContainerName, initialLocationId, locations]);
+
+  useEffect(() => {
+    // Initialize database service and load containers and locations
     const init = async () => {
       try {
         await databaseService.initialize();
         const allContainers = await databaseService.getAllContainers();
-        setContainers(allContainers.map(c => ({ id: c.id, name: c.name })));
+        setContainers(allContainers.map(c => ({ id: c.id, name: c.name, location_id: c.location_id })));
+        
+        const allLocations = await databaseService.getAllLocations();
+        setLocations(allLocations);
       } catch (error) {
         console.error('Failed to initialize database:', error);
       }
@@ -105,6 +162,55 @@ export default function AddItemScreen({ onClose, onItemAdded }: AddItemScreenPro
     
     // Track photo taken
     await logPhotoTaken('camera');
+  };
+
+  const handleReceiptPhotoTaken = async (uri: string) => {
+    setReceiptUri(uri);
+    setShowReceiptCamera(false);
+    
+    // Track photo taken
+    await logPhotoTaken('receipt');
+  };
+
+  const handleCreateContainer = async () => {
+    if (!locationId) {
+      Alert.alert('Error', 'Please select a location first');
+      return;
+    }
+
+    if (!newContainerName.trim()) {
+      Alert.alert('Error', 'Please enter a container name');
+      return;
+    }
+
+    try {
+      const containerId = `container_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      await databaseService.createContainer({
+        id: containerId,
+        name: newContainerName.trim(),
+        location_id: locationId,
+        synced: 0,
+      });
+
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      
+      // Reload containers
+      const allContainers = await databaseService.getAllContainers();
+      setContainers(allContainers.map(c => ({ id: c.id, name: c.name, location_id: c.location_id })));
+      
+      // Select the newly created container
+      setContainerId(containerId);
+      setContainerName(newContainerName.trim());
+      
+      // Close modal and reset
+      setShowCreateContainer(false);
+      setNewContainerName('');
+      
+      Alert.alert('Success', 'Container created!');
+    } catch (error) {
+      console.error('Failed to create container:', error);
+      Alert.alert('Error', 'Failed to create container');
+    }
   };
 
   const handleSave = async () => {
@@ -165,6 +271,18 @@ export default function AddItemScreen({ onClose, onItemAdded }: AddItemScreenPro
       
       // Save to local database
       await databaseService.createItem(newItem);
+      
+      // Save receipt photo if provided
+      if (receiptUri) {
+        const receiptId = `receipt_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        await databaseService.createReceipt({
+          id: receiptId,
+          item_id: itemId,
+          local_photo_uri: receiptUri,
+          synced: 0,
+        });
+        console.log('Receipt saved successfully!');
+      }
       
       // Track item added with analytics
       await logItemAdded(undefined, !!imageUri);
@@ -228,6 +346,37 @@ export default function AddItemScreen({ onClose, onItemAdded }: AddItemScreenPro
             >
               <Camera color="#FACC15" size={32} />
               <Text style={styles.addImageText}>Add Photo</Text>
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity
+            onPress={() => setShowShelfAnalyzer(true)}
+            style={styles.analyzeButton}
+          >
+            <Text style={styles.analyzeButtonText}>Analyze photo (AI)</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Receipt Photo Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>📄 Receipt Photo (Optional)</Text>
+          <Text style={styles.sectionSubtitle}>Store warranty & purchase information</Text>
+          {receiptUri ? (
+            <View style={styles.imageContainer}>
+              <Image source={{ uri: receiptUri }} style={styles.itemImage} />
+              <TouchableOpacity
+                onPress={() => setReceiptUri(null)}
+                style={styles.removeImageButton}
+              >
+                <X color="white" size={20} />
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <TouchableOpacity
+              onPress={() => setShowReceiptCamera(true)}
+              style={styles.addImageButton}
+            >
+              <Camera color="#3B82F6" size={32} />
+              <Text style={styles.addImageText}>Add Receipt</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -349,6 +498,8 @@ export default function AddItemScreen({ onClose, onItemAdded }: AddItemScreenPro
               onPress={() => {
                 setLocationId(null);
                 setLocationName('');
+                setContainerId(null);
+                setContainerName('');
               }}
             >
               <Text style={styles.clearContainerText}>Clear</Text>
@@ -357,30 +508,35 @@ export default function AddItemScreen({ onClose, onItemAdded }: AddItemScreenPro
         </View>
 
         {/* Container Selection */}
-        {containers.length > 0 && (
-          <View style={styles.field}>
-            <Text style={styles.label}>Container (Optional)</Text>
+        <View style={styles.field}>
+          <Text style={styles.label}>Container (Optional)</Text>
+          <TouchableOpacity
+            style={styles.containerPicker}
+            onPress={() => {
+              if (!locationId) {
+                Alert.alert('Select Location First', 'Please select a location before choosing a container.');
+                setShowLocationPicker(true);
+              } else {
+                setShowContainerPicker(true);
+              }
+            }}
+          >
+            <Text style={containerName ? styles.containerPickerText : styles.containerPickerPlaceholder}>
+              {containerName || 'Select a container'}
+            </Text>
+          </TouchableOpacity>
+          {containerName && (
             <TouchableOpacity
-              style={styles.containerPicker}
-              onPress={() => setShowContainerPicker(true)}
+              style={styles.clearContainerButton}
+              onPress={() => {
+                setContainerId(null);
+                setContainerName('');
+              }}
             >
-              <Text style={containerName ? styles.containerPickerText : styles.containerPickerPlaceholder}>
-                {containerName || 'Select a container'}
-              </Text>
+              <Text style={styles.clearContainerText}>Clear</Text>
             </TouchableOpacity>
-            {containerName && (
-              <TouchableOpacity
-                style={styles.clearContainerButton}
-                onPress={() => {
-                  setContainerId(null);
-                  setContainerName('');
-                }}
-              >
-                <Text style={styles.clearContainerText}>Clear</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        )}
+          )}
+        </View>
 
         <View style={{ height: 100 }} />
       </ScrollView>
@@ -412,6 +568,18 @@ export default function AddItemScreen({ onClose, onItemAdded }: AddItemScreenPro
         onImageCaptured={handleImageCaptured}
       />
 
+      <MobileCamera
+        visible={showReceiptCamera}
+        onClose={() => setShowReceiptCamera(false)}
+        onImageCaptured={handleReceiptPhotoTaken}
+      />
+
+      <MobileShelfAnalyzer
+        visible={showShelfAnalyzer}
+        onClose={() => setShowShelfAnalyzer(false)}
+        onItemsDetected={handleDetectedItems}
+      />
+
       {/* Container Picker Modal */}
       <Modal
         visible={showContainerPicker}
@@ -424,10 +592,15 @@ export default function AddItemScreen({ onClose, onItemAdded }: AddItemScreenPro
               <X color="#111827" size={24} />
             </TouchableOpacity>
             <Text style={styles.pickerTitle}>Select Container</Text>
-            <View style={{ width: 24 }} />
+            <TouchableOpacity onPress={() => {
+              setShowContainerPicker(false);
+              setShowCreateContainer(true);
+            }}>
+              <Plus color="#3B82F6" size={24} />
+            </TouchableOpacity>
           </View>
           <FlatList
-            data={containers}
+            data={filteredContainers}
             keyExtractor={(item) => item.id}
             renderItem={({ item }) => (
               <TouchableOpacity
@@ -443,6 +616,21 @@ export default function AddItemScreen({ onClose, onItemAdded }: AddItemScreenPro
                 <Text style={styles.pickerItemText} numberOfLines={1} ellipsizeMode="tail">{item.name}</Text>
               </TouchableOpacity>
             )}
+            ListEmptyComponent={
+              <View style={styles.emptyPickerContainer}>
+                <Text style={styles.emptyPickerText}>No containers in this location</Text>
+                <TouchableOpacity
+                  style={styles.createContainerButton}
+                  onPress={() => {
+                    setShowContainerPicker(false);
+                    setShowCreateContainer(true);
+                  }}
+                >
+                  <Plus color="#3B82F6" size={20} />
+                  <Text style={styles.createContainerButtonText}>Create Container</Text>
+                </TouchableOpacity>
+              </View>
+            }
           />
         </View>
       </Modal>
@@ -468,8 +656,13 @@ export default function AddItemScreen({ onClose, onItemAdded }: AddItemScreenPro
               <TouchableOpacity
                 style={styles.pickerItem}
                 onPress={() => {
+                  const locationChanged = item.id !== locationId;
                   setLocationId(item.id);
                   setLocationName(item.name);
+                  if (locationChanged) {
+                    setContainerId(null);
+                    setContainerName('');
+                  }
                   setShowLocationPicker(false);
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                 }}
@@ -479,6 +672,50 @@ export default function AddItemScreen({ onClose, onItemAdded }: AddItemScreenPro
               </TouchableOpacity>
             )}
           />
+        </View>
+      </Modal>
+
+      {/* Create Container Modal */}
+      <Modal
+        visible={showCreateContainer}
+        animationType="slide"
+        presentationStyle="pageSheet"
+      >
+        <View style={styles.pickerModal}>
+          <View style={styles.pickerHeader}>
+            <TouchableOpacity onPress={() => {
+              setShowCreateContainer(false);
+              setNewContainerName('');
+            }}>
+              <X color="#111827" size={24} />
+            </TouchableOpacity>
+            <Text style={styles.pickerTitle}>New Container</Text>
+            <View style={{ width: 24 }} />
+          </View>
+          <View style={styles.createContainerForm}>
+            <View style={styles.field}>
+              <Text style={styles.label}>Container Name</Text>
+              <TextInput
+                value={newContainerName}
+                onChangeText={setNewContainerName}
+                placeholder="e.g., Storage Box #1, Basement Bin"
+                style={styles.input}
+                placeholderTextColor="#9CA3AF"
+                autoFocus
+              />
+            </View>
+            <View style={styles.field}>
+              <Text style={styles.label}>Location</Text>
+              <Text style={styles.selectedLocationText}>{locationName}</Text>
+            </View>
+            <TouchableOpacity
+              style={styles.saveButton}
+              onPress={handleCreateContainer}
+            >
+              <Package color="#111827" size={20} />
+              <Text style={styles.saveButtonText}>Create Container</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </Modal>
 
@@ -573,6 +810,18 @@ const styles = StyleSheet.create({
     borderColor: '#FACC15',
     borderStyle: 'dashed',
   },
+    analyzeButton: {
+      marginTop: 8,
+      alignSelf: 'center',
+      paddingVertical: 10,
+      paddingHorizontal: 16,
+      borderRadius: 10,
+      backgroundColor: '#111827',
+    },
+    analyzeButtonText: {
+      color: 'white',
+      fontWeight: '700',
+    },
   addImageText: {
     color: '#FACC15',
     fontSize: 16,
@@ -625,6 +874,21 @@ const styles = StyleSheet.create({
     color: '#111827',
     marginTop: 8,
     marginBottom: 16,
+  },
+  section: {
+    marginHorizontal: 16,
+    marginTop: 16,
+    marginBottom: 16,
+    padding: 16,
+    backgroundColor: 'white',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  sectionSubtitle: {
+    fontSize: 13,
+    color: '#6B7280',
+    marginBottom: 12,
   },
   footer: {
     padding: 16,
@@ -709,6 +973,37 @@ const styles = StyleSheet.create({
     color: '#111827',
     flex: 1,
     flexShrink: 1,
+  },
+  emptyPickerContainer: {
+    padding: 40,
+    alignItems: 'center',
+  },
+  emptyPickerText: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginBottom: 16,
+  },
+  createContainerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    backgroundColor: '#EFF6FF',
+    borderRadius: 8,
+  },
+  createContainerButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#3B82F6',
+  },
+  createContainerForm: {
+    padding: 20,
+  },
+  selectedLocationText: {
+    fontSize: 16,
+    color: '#111827',
+    fontWeight: '500',
   },
 });
 

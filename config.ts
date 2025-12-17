@@ -8,5 +8,9 @@ export const Config = {
   GEMINI_API_KEY: process.env.EXPO_PUBLIC_GEMINI_API_KEY || '',
   
   // Backend URL (when sync is enabled)
-  BACKEND_URL: process.env.EXPO_PUBLIC_BACKEND_URL || 'http://localhost:4000',
+  // Default empty so we fall back to cloud env when not provided
+  BACKEND_URL: process.env.EXPO_PUBLIC_BACKEND_URL || '',
+
+  // Clerk publishable key for authentication (set EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY in .env)
+  CLERK_PUBLISHABLE_KEY: process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY || '',
 };

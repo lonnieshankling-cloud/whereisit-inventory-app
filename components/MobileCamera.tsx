@@ -139,11 +139,14 @@ export function MobileCamera({
           </View>
         ) : (
           // Camera view
-          <CameraView
-            ref={cameraRef}
-            style={StyleSheet.absoluteFillObject}
-            facing={cameraType}
-          >
+          <View style={styles.cameraContainer}>
+            <CameraView
+              ref={cameraRef}
+              style={StyleSheet.absoluteFillObject}
+              facing={cameraType}
+            />
+            
+            {/* Overlay controls - positioned absolutely on top */}
             <View style={styles.cameraControls}>
               {/* Top controls */}
               <View style={styles.topControls}>
@@ -171,7 +174,7 @@ export function MobileCamera({
                 <View style={{ width: 50 }} />
               </View>
             </View>
-          </CameraView>
+          </View>
         )}
       </View>
     </Modal>
@@ -183,11 +186,21 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'black',
   },
+  cameraContainer: {
+    flex: 1,
+    backgroundColor: 'black',
+  },
   cameraControls: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     flex: 1,
     justifyContent: 'space-between',
     paddingVertical: 50,
     paddingHorizontal: 20,
+    zIndex: 10,
   },
   topControls: {
     flexDirection: 'row',

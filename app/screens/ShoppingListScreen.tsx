@@ -14,8 +14,8 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
-import { LocalShoppingItem } from '../services/databaseService';
-import { shoppingListService } from '../services/shoppingListService';
+import { LocalShoppingItem } from '../../services/databaseService';
+import { shoppingListService } from '../../services/shoppingListService';
 
 interface ShoppingListScreenProps {
   visible: boolean;

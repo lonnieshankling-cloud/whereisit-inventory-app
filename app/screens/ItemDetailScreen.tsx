@@ -1,5 +1,5 @@
 import * as Haptics from 'expo-haptics';
-import { Barcode, Calendar, DollarSign, Edit2, Package, Save, ShoppingBag, ShoppingCart, Trash2, X } from 'lucide-react-native';
+import { Barcode, Calendar, DollarSign, Edit2, FileText, Package, Plus, Save, ShoppingBag, ShoppingCart, Trash2, X } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 import {
     Alert,
@@ -13,10 +13,10 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
-import { MobileBarcodeScannerModal } from '../components/MobileBarcodeScannerModal';
-import { MobileCamera } from '../components/MobileCamera';
-import { databaseService, LocalContainer, LocalItem } from '../services/databaseService';
-import { shoppingListService } from '../services/shoppingListService';
+import { MobileBarcodeScannerModal } from '../../components/MobileBarcodeScannerModal';
+import { MobileCamera } from '../../components/MobileCamera';
+import { databaseService, LocalContainer, LocalItem } from '../../services/databaseService';
+import { shoppingListService } from '../../services/shoppingListService';
 
 interface ItemDetailScreenProps {
   item: LocalItem;
@@ -36,6 +36,7 @@ export default function ItemDetailScreen({
   const [isEditing, setIsEditing] = useState(false);
   const [name, setName] = useState(item.name);
   const [description, setDescription] = useState(item.description || '');
+  const [category, setCategory] = useState(item.category || '');
   const [barcode, setBarcode] = useState(item.barcode || '');
   const [quantity, setQuantity] = useState(item.quantity?.toString() || '1');
   const [minQuantity, setMinQuantity] = useState(item.min_quantity?.toString() || '');
@@ -47,11 +48,16 @@ export default function ItemDetailScreen({
   const [containerId, setContainerId] = useState(item.container_id || '');
   const [containerName, setContainerName] = useState('');
   const [containers, setContainers] = useState<LocalContainer[]>([]);
+  const [receipts, setReceipts] = useState<any[]>([]);
+  const [showReceiptCamera, setShowReceiptCamera] = useState(false);
   
   const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
   const [showCamera, setShowCamera] = useState(false);
   const [showLocationPicker, setShowLocationPicker] = useState(false);
   const [showContainerPicker, setShowContainerPicker] = useState(false);
+  const [showCreateContainerModal, setShowCreateContainerModal] = useState(false);
+  const [newContainerName, setNewContainerName] = useState('');
+  const [isCreatingContainer, setIsCreatingContainer] = useState(false);
   const [locations] = useState<Array<{id: string, name: string}>>([
     { id: 'bedroom', name: 'Bedroom' },
     { id: 'entertainment-room', name: 'Entertainment Room' },
@@ -97,6 +103,98 @@ export default function ItemDetailScreen({
     }
   };
 
+  const loadReceipts = async () => {
+    try {
+      const fetchedReceipts = await databaseService.getReceiptsByItem(item.id);
+      setReceipts(fetchedReceipts);
+    } catch (error) {
+      console.error('Failed to load receipts:', error);
+    }
+  };
+
+  useEffect(() => {
+    loadReceipts();
+  }, [visible]);
+
+  const handleReceiptPhotoTaken = async (uri: string) => {
+    setShowReceiptCamera(false);
+    try {
+      const receiptId = `receipt_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      await databaseService.createReceipt({
+        id: receiptId,
+        item_id: item.id,
+        local_photo_uri: uri,
+        synced: 0,
+      });
+      await loadReceipts();
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (error) {
+      console.error('Failed to save receipt:', error);
+      Alert.alert('Error', 'Failed to save receipt photo');
+    }
+  };
+
+  const handleDeleteReceipt = async (receiptId: string) => {
+    Alert.alert(
+      'Delete Receipt',
+      'Are you sure you want to delete this receipt?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await databaseService.deleteReceipt(receiptId);
+              await loadReceipts();
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            } catch (error) {
+              console.error('Failed to delete receipt:', error);
+              Alert.alert('Error', 'Failed to delete receipt');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleCreateContainer = async () => {
+    if (!newContainerName.trim()) {
+      Alert.alert('Error', 'Please enter a container name');
+      return;
+    }
+
+    setIsCreatingContainer(true);
+    try {
+      const containerId = `container_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      await databaseService.createContainer({
+        id: containerId,
+        name: newContainerName.trim(),
+        synced: 0,
+      });
+
+      // Reload containers
+      await loadContainers();
+      
+      // Select the newly created container
+      setContainerId(containerId);
+      setContainerName(newContainerName.trim());
+      
+      // Close modals and reset
+      setShowCreateContainerModal(false);
+      setShowContainerPicker(false);
+      setNewContainerName('');
+      
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert('Success', 'Container created and selected!');
+    } catch (error) {
+      console.error('Failed to create container:', error);
+      Alert.alert('Error', 'Failed to create container');
+    } finally {
+      setIsCreatingContainer(false);
+    }
+  };
+
   const handleSave = async () => {
     if (!name.trim()) {
       Alert.alert('Error', 'Please enter an item name');
@@ -108,6 +206,7 @@ export default function ItemDetailScreen({
       await databaseService.updateItem(item.id, {
         name: name.trim(),
         description: description.trim() || undefined,
+        category: category.trim() || undefined,
         location_id: locationId || undefined,
         container_id: containerId || undefined,
         barcode: barcode || undefined,
@@ -252,6 +351,18 @@ export default function ItemDetailScreen({
               </View>
 
               <View style={styles.field}>
+                <Text style={styles.label}>Category (Tag)</Text>
+                <TextInput
+                  value={category}
+                  onChangeText={setCategory}
+                  style={styles.input}
+                  placeholder="e.g., Electronics, Food, Tools"
+                  placeholderTextColor="#9CA3AF"
+                />
+                <Text style={styles.helpText}>Add a tag to categorize this item</Text>
+              </View>
+
+              <View style={styles.field}>
                 <Text style={styles.label}>Location</Text>
                 <TouchableOpacity
                   style={styles.input}
@@ -350,6 +461,12 @@ export default function ItemDetailScreen({
                 <Text style={styles.itemDescription}>{item.description}</Text>
               )}
               
+              {item.category && (
+                <View style={styles.categoryTag}>
+                  <Text style={styles.categoryTagText}>{item.category}</Text>
+                </View>
+              )}
+              
               <View style={styles.infoSection}>
                 <InfoRow label="Quantity" value={item.quantity} icon={Package} />
                 <InfoRow label="Container" value={containerName} icon={Package} />
@@ -357,6 +474,46 @@ export default function ItemDetailScreen({
                 <InfoRow label="Price" value={item.purchase_price ? `$${item.purchase_price.toFixed(2)}` : undefined} icon={DollarSign} />
                 <InfoRow label="Store" value={item.purchase_store} icon={ShoppingBag} />
                 <InfoRow label="Date" value={item.purchase_date} icon={Calendar} />
+              </View>
+
+              {/* Receipts Section */}
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>📄 Receipt Photos</Text>
+                <Text style={styles.sectionSubtitle}>Warranty & purchase information</Text>
+                
+                {receipts.length > 0 ? (
+                  <View>
+                    {receipts.map((receipt) => (
+                      <View key={receipt.id} style={styles.receiptItem}>
+                        <Image
+                          source={{ uri: receipt.local_photo_uri }}
+                          style={styles.receiptImage}
+                        />
+                        <TouchableOpacity
+                          onPress={() => handleDeleteReceipt(receipt.id)}
+                          style={styles.receiptDeleteButton}
+                        >
+                          <Trash2 color="white" size={20} />
+                        </TouchableOpacity>
+                      </View>
+                    ))}
+                    <TouchableOpacity
+                      onPress={() => setShowReceiptCamera(true)}
+                      style={styles.addReceiptButton}
+                    >
+                      <Plus color="#3B82F6" size={24} />
+                      <Text style={styles.addReceiptButtonText}>Add Another Receipt</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <TouchableOpacity
+                    onPress={() => setShowReceiptCamera(true)}
+                    style={styles.receiptPlaceholder}
+                  >
+                    <FileText color="#9CA3AF" size={48} />
+                    <Text style={styles.receiptPlaceholderText}>Tap to add receipt photo</Text>
+                  </TouchableOpacity>
+                )}
               </View>
 
               {item.synced === 0 && (
@@ -381,6 +538,7 @@ export default function ItemDetailScreen({
                   // Reset form
                   setName(item.name);
                   setDescription(item.description || '');
+                  setCategory(item.category || '');
                   setBarcode(item.barcode || '');
                   setQuantity(item.quantity?.toString() || '1');
                   setPurchasePrice(item.purchase_price?.toString() || '');
@@ -479,6 +637,19 @@ export default function ItemDetailScreen({
               <Text style={styles.pickerTitle}>Select Container</Text>
               <View style={{ width: 24 }} />
             </View>
+            
+            {/* Create New Container Button */}
+            <TouchableOpacity
+              style={styles.createNewButton}
+              onPress={() => {
+                setShowContainerPicker(false);
+                setShowCreateContainerModal(true);
+              }}
+            >
+              <Plus color="#3B82F6" size={20} />
+              <Text style={styles.createNewButtonText}>Create New Container</Text>
+            </TouchableOpacity>
+            
             <FlatList
               data={[{ id: '', name: 'None' }, ...containers]}
               keyExtractor={(item) => item.id || 'none'}
@@ -510,13 +681,63 @@ export default function ItemDetailScreen({
                     No containers yet
                   </Text>
                   <Text style={{ marginTop: 4, color: '#9CA3AF', fontSize: 14 }}>
-                    Create containers in the Containers tab
+                    Create your first container above
                   </Text>
                 </View>
               }
             />
           </View>
         </Modal>
+
+        {/* Create Container Modal */}
+        <Modal
+          visible={showCreateContainerModal}
+          animationType="slide"
+          presentationStyle="pageSheet"
+        >
+          <View style={styles.pickerModal}>
+            <View style={styles.pickerHeader}>
+              <TouchableOpacity onPress={() => {
+                setShowCreateContainerModal(false);
+                setNewContainerName('');
+              }}>
+                <X color="#111827" size={24} />
+              </TouchableOpacity>
+              <Text style={styles.pickerTitle}>Create Container</Text>
+              <View style={{ width: 24 }} />
+            </View>
+            
+            <View style={{ padding: 20 }}>
+              <Text style={styles.label}>Container Name</Text>
+              <TextInput
+                value={newContainerName}
+                onChangeText={setNewContainerName}
+                style={styles.input}
+                placeholder="Enter container name"
+                placeholderTextColor="#9CA3AF"
+                autoFocus
+              />
+              
+              <TouchableOpacity
+                style={[styles.button, styles.saveButton, { marginTop: 20 }]}
+                onPress={handleCreateContainer}
+                disabled={isCreatingContainer}
+              >
+                <Package color="#fff" size={20} />
+                <Text style={styles.saveButtonText}>
+                  {isCreatingContainer ? 'Creating...' : 'Create Container'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Receipt Camera Modal */}
+        <MobileCamera
+          visible={showReceiptCamera}
+          onClose={() => setShowReceiptCamera(false)}
+          onImageCaptured={handleReceiptPhotoTaken}
+        />
       </View>
     </Modal>
   );
@@ -628,7 +849,20 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#6B7280',
     lineHeight: 24,
+    marginBottom: 12,
+  },
+  categoryTag: {
+    backgroundColor: '#DBEAFE',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    alignSelf: 'flex-start',
     marginBottom: 20,
+  },
+  categoryTagText: {
+    fontSize: 13,
+    color: '#1E40AF',
+    fontWeight: '600',
   },
   infoSection: {
     gap: 12,
@@ -754,4 +988,101 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
+  createNewButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#EFF6FF',
+    marginHorizontal: 16,
+    marginVertical: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: '#3B82F6',
+    borderStyle: 'dashed',
+    gap: 8,
+  },
+  createNewButtonText: {
+    color: '#3B82F6',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  section: {
+    marginHorizontal: 20,
+    marginVertical: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    backgroundColor: 'white',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#111827',
+    marginBottom: 4,
+  },
+  sectionSubtitle: {
+    fontSize: 13,
+    color: '#6B7280',
+    marginBottom: 12,
+  },
+  receiptPlaceholder: {
+    paddingVertical: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#E5E7EB',
+    borderRadius: 8,
+    borderStyle: 'dashed',
+  },
+  receiptPlaceholderText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: '#6B7280',
+    fontWeight: '500',
+  },
+  receiptItem: {
+    position: 'relative',
+    marginBottom: 12,
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
+  receiptImage: {
+    width: '100%',
+    height: 200,
+    borderRadius: 8,
+  },
+  receiptDeleteButton: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#EF4444',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  addReceiptButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    marginTop: 12,
+    borderWidth: 2,
+    borderColor: '#3B82F6',
+    borderRadius: 8,
+    borderStyle: 'dashed',
+    gap: 8,
+  },
+  addReceiptButtonText: {
+    color: '#3B82F6',
+    fontSize: 14,
+    fontWeight: '600',
+  },
 });
+

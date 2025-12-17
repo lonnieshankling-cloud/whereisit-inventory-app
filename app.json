@@ -2,7 +2,7 @@
   "expo": {
     "name": "WhereIsItMobile",
     "slug": "WhereIsItMobile",
-    "version": "1.0.0",
+    "version": "1.0.2",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "whereisitmobile",
@@ -19,7 +19,7 @@
     },
     "android": {
       "package": "com.whereisit.inventory",
-      "versionCode": 2,
+      "versionCode": 4,
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -30,10 +30,7 @@
       "predictiveBackGestureEnabled": false,
       "permissions": [
         "CAMERA",
-        "READ_EXTERNAL_STORAGE",
-        "WRITE_EXTERNAL_STORAGE",
         "ACCESS_NETWORK_STATE",
-        "android.permission.CAMERA",
         "com.android.vending.BILLING"
       ]
     },
@@ -64,7 +61,8 @@
         }
       ],
       "expo-sqlite",
-      "react-native-iap"
+      "react-native-iap",
+      "expo-secure-store"
     ],
     "updates": {
       "enabled": false,

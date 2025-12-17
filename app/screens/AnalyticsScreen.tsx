@@ -8,7 +8,7 @@ import {
     Text,
     View,
 } from 'react-native';
-import { databaseService, LocalItem } from '../services/databaseService';
+import { databaseService, LocalItem } from '../../services/databaseService';
 
 interface CategoryStats {
   category: string;
