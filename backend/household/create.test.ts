@@ -76,10 +76,10 @@ describe("Create Household endpoint", () => {
     expect(db.exec).toHaveBeenCalledTimes(1);
     const userUpdateCall = vi.mocked(db.exec).mock.calls[0];
     expect(userUpdateCall[0]).toEqual([
-      "\n      INSERT INTO users (id, household_id)\n      VALUES (",
+      "\n        INSERT INTO users (id, household_id)\n        VALUES (",
       ", ",
-      ")\n      ON CONFLICT (id) DO UPDATE SET household_id = ",
-      "\n    ",
+      ")\n        ON CONFLICT (id) DO UPDATE SET household_id = ",
+      "\n      ",
     ]);
     expect(userUpdateCall[1]).toBe("user-abc");
     expect(userUpdateCall[2]).toBe(1);
