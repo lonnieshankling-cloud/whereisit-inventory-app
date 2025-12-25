@@ -58,16 +58,16 @@ describe("Create Household Invitation endpoint", () => {
 
     const userCheckCall = vi.mocked(db.queryRow).mock.calls[0];
     expect(userCheckCall[0]).toEqual([
-      "\n      SELECT household_id FROM users WHERE id = ",
-      "\n    ",
+      "\n        SELECT household_id FROM users WHERE id = ",
+      "\n      ",
     ]);
     expect(userCheckCall[1]).toBe("user-abc");
 
     const invitationInsertCall = vi.mocked(db.queryRow).mock.calls[1];
     expect(invitationInsertCall[0]).toEqual([
-      "\n      INSERT INTO household_invitations (household_id, invited_email, status)\n      VALUES (",
+      "\n        INSERT INTO household_invitations (household_id, invited_email, status)\n        VALUES (",
       ", ",
-      ", 'pending')\n      RETURNING id, invited_email, status\n    ",
+      ", 'pending')\n        RETURNING id, invited_email, status\n      ",
     ]);
     expect(invitationInsertCall[1]).toBe(123);
     expect(invitationInsertCall[2]).toBe("new-member@example.com");
