@@ -11,7 +11,8 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
-import { householdApi } from '../../services/api';
+import { useAuth } from '@clerk/clerk-expo';
+import { householdApi, setAuthToken } from '../../services/api';
 
 interface HouseholdManagementScreenProps {
   visible: boolean;
@@ -41,6 +42,7 @@ interface Household {
 }
 
 export default function HouseholdManagementScreen({ visible, onClose }: HouseholdManagementScreenProps) {
+  const { getToken } = useAuth();
   const [household, setHousehold] = useState<Household | null>(null);
   const [members, setMembers] = useState<HouseholdMember[]>([]);
   const [pendingInvites, setPendingInvites] = useState<PendingInvitation[]>([]);
@@ -106,6 +108,12 @@ export default function HouseholdManagementScreen({ visible, onClose }: Househol
     }
 
     try {
+      // Refresh auth token before making request
+      const token = await getToken();
+      if (token) {
+        await setAuthToken(token);
+      }
+      
       await householdApi.invite(inviteEmail);
       Alert.alert('Success', `Invitation sent to ${inviteEmail}`);
       setInviteEmail('');
