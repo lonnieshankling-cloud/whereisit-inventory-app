@@ -1,6 +1,6 @@
-import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
-import { create } from "./create";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { AuthData } from "../auth/auth";
+import { create } from "./create";
 import type { Household } from "./get";
 
 vi.mock("~encore/auth", () => ({
@@ -59,16 +59,16 @@ describe("Create Household endpoint", () => {
 
     const userCheckCall = vi.mocked(db.queryRow).mock.calls[0];
     expect(userCheckCall[0]).toEqual([
-      "\n      SELECT household_id FROM users WHERE id = ",
-      "\n    ",
+      "\n        SELECT household_id FROM users WHERE id = ",
+      "\n      ",
     ]);
     expect(userCheckCall[1]).toBe("user-abc");
 
     const householdInsertCall = vi.mocked(db.queryRow).mock.calls[1];
     expect(householdInsertCall[0]).toEqual([
-      "\n      INSERT INTO households (name, owner_id)\n      VALUES (",
+      "\n        INSERT INTO households (name, owner_id)\n        VALUES (",
       ", ",
-      ")\n      RETURNING id, name, owner_id, created_at\n    ",
+      ")\n        RETURNING id, name, owner_id, created_at\n      ",
     ]);
     expect(householdInsertCall[1]).toBe("My Home");
     expect(householdInsertCall[2]).toBe("user-abc");

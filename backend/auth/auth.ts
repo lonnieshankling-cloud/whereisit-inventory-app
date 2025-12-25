@@ -1,6 +1,7 @@
-import { Header, Cookie, APIError, Gateway } from "encore.dev/api";
+import { APIError, Cookie, Gateway, Header } from "encore.dev/api";
 import { authHandler } from "encore.dev/auth";
 import { secret } from "encore.dev/config";
+import db from "../db";
 
 const clerkSecretKey = secret("ClerkSecretKey");
 
@@ -37,8 +38,25 @@ export const auth = authHandler<AuthParams, AuthData>(
       const clerkClient = await getClerkClient();
 
       const user = await clerkClient.users.getUser(verifiedToken.sub);
+      const userID = user.id;
+      
+      console.log("[Auth] User authenticated:", userID);
+      
+      // Auto-create user record if it doesn't exist (solves foreign key constraint)
+      try {
+        await db.exec`
+          INSERT INTO users (id, email, image_url)
+          VALUES (${userID}, ${user.emailAddresses[0]?.emailAddress ?? null}, ${user.imageUrl})
+          ON CONFLICT (id) DO NOTHING
+        `;
+        console.log("[Auth] User record ensured in database:", userID);
+      } catch (dbErr) {
+        console.error("[Auth] Failed to create/ensure user record:", dbErr);
+        // Don't fail auth if DB operation fails - user might already exist
+      }
+      
       return {
-        userID: user.id,
+        userID,
         imageUrl: user.imageUrl,
         email: user.emailAddresses[0]?.emailAddress ?? null,
       };

@@ -16,19 +16,19 @@ const getBaseURL = () => {
 
   if (explicit) {
     if (isDevice && (explicit.includes('localhost') || explicit.includes('127.0.0.1'))) {
-      console.warn('[API] Localhost backend in env on device, falling back to cloud env');
-      return Environment('prod');
+      console.warn('[API] Localhost backend in env on device, falling back to cloud env (staging)');
+      return Environment('staging');
     }
     return explicit;
   }
 
-  // If no env var, prefer cloud default environment to avoid localhost on devices
-  let base = Environment('default');
+  // If no env var, prefer staging cloud environment by default to avoid prod
+  let base = Environment('staging');
 
-  // Safety: if something resolved to localhost on a device, override to cloud
+  // Safety: if something resolved to localhost on a device (shouldn't for staging), override to staging
   if (isDevice && (base.includes('localhost') || base.includes('127.0.0.1'))) {
-    console.warn('[API] Localhost base detected on device, falling back to cloud env');
-    base = Environment('prod');
+    console.warn('[API] Localhost base detected on device, falling back to cloud env (staging)');
+    base = Environment('staging');
   }
 
   return base;
@@ -132,8 +132,22 @@ export const householdApi = {
    * Create a new household
    */
   async create(name: string) {
+    console.log('🔵 [API] Creating household, name:', name);
     const client = await getApiClient();
-    return await client.household.create({ name });
+    
+    try {
+      const result = await Promise.race([
+        client.household.create({ name }),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Request timed out after 10 seconds')), 10000)
+        )
+      ]);
+      console.log('🟢 [API] Household created successfully:', result);
+      return result;
+    } catch (error) {
+      console.error('🔴 [API] Household creation failed:', error);
+      throw error;
+    }
   },
 
   /**
