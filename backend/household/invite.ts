@@ -1,6 +1,7 @@
 import { api } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
 import db from "../db";
+import { sendInvitationEmail } from "../email/send";
 
 export interface InviteRequest {
   invited_email: string;
@@ -40,6 +41,11 @@ export const invite = api(
 
       console.log("[Invite] Creating invitation for household:", userResult.household_id);
       
+      // Get household name for email
+      const householdResult = await db.queryRow<{ name: string }>`
+        SELECT name FROM households WHERE id = ${userResult.household_id}
+      `;
+      
       // Generate unique invitation code with retry logic
       let invitationCode = generateInvitationCode();
       let attempts = 0;
@@ -54,6 +60,14 @@ export const invite = api(
           `;
 
           console.log("[Invite] Invitation created successfully:", invitationResult);
+          
+          // Send invitation email (fire and forget)
+          if (householdResult?.name) {
+            sendInvitationEmail(req.invited_email, householdResult.name, invitationCode).catch(err => {
+              console.error("[Invite] Email sending failed (non-blocking):", err);
+            });
+          }
+          
           return invitationResult!;
         } catch (err: any) {
           // If duplicate code, generate a new one and retry

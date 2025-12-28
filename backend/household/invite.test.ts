@@ -1,6 +1,6 @@
-import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
-import { invite } from "./invite";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { AuthData } from "../auth/auth";
+import { invite } from "./invite";
 
 vi.mock("~encore/auth", () => ({
   getAuthData: vi.fn(),

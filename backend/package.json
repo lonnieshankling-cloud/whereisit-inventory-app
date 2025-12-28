@@ -12,6 +12,7 @@
     "@google-cloud/vision": "^5.3.4",
     "@google/generative-ai": "^0.24.1",
     "encore.dev": "^1.53.0",
+    "resend": "^3.0.0",
     "sharp": "^0.34.5"
   },
   "devDependencies": {

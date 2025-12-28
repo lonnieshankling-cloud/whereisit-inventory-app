@@ -1,5 +1,6 @@
-import { Clock, Crown, LogOut, Mail, Trash2, UserPlus, Users, X } from 'lucide-react-native';
-import React, { useEffect, useState } from 'react';
+import { useAuth } from '@clerk/clerk-expo';
+import { Clock, Crown, LogOut, Trash2, UserPlus, Users, X } from 'lucide-react-native';
+import { useEffect, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
@@ -11,7 +12,6 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
-import { useAuth } from '@clerk/clerk-expo';
 import { householdApi, setAuthToken } from '../../services/api';
 
 interface HouseholdManagementScreenProps {
