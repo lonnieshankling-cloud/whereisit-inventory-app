@@ -1,5 +1,5 @@
-import { Resend } from "resend";
 import { secret } from "encore.dev/config";
+import { Resend } from "resend";
 
 const resendApiKey = secret("ResendApiKey");
 
@@ -20,7 +20,7 @@ export async function sendInvitationEmail(
     const downloadLink = "https://whereisit.app/download"; // Update with actual download link
 
     await resend.emails.send({
-      from: "invitations@whereisit.app",
+      from: "WhereIsIt Invitations <onboarding@resend.dev>",
       to: toEmail,
       subject: `You're invited to join ${householdName} on WhereIsIt!`,
       html: `
