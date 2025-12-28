@@ -40,6 +40,10 @@ describe("Create Household Invitation endpoint", () => {
       household_id: 123,
     };
 
+    const mockHousehold = {
+      name: "Smith Family",
+    };
+
     const mockCreatedInvitation = {
       id: 456,
       invited_email: "new-member@example.com",
@@ -49,13 +53,14 @@ describe("Create Household Invitation endpoint", () => {
 
     vi.mocked(db.queryRow)
       .mockResolvedValueOnce(mockUserWithHousehold)
+      .mockResolvedValueOnce(mockHousehold)
       .mockResolvedValueOnce(mockCreatedInvitation);
 
     const result = await invite(mockInvitationPayload);
 
     expect(getAuthData).toHaveBeenCalled();
 
-    expect(db.queryRow).toHaveBeenCalledTimes(2);
+    expect(db.queryRow).toHaveBeenCalledTimes(3);
 
     const userCheckCall = vi.mocked(db.queryRow).mock.calls[0];
     expect(userCheckCall[0]).toEqual([
@@ -64,7 +69,14 @@ describe("Create Household Invitation endpoint", () => {
     ]);
     expect(userCheckCall[1]).toBe("user-abc");
 
-    const invitationInsertCall = vi.mocked(db.queryRow).mock.calls[1];
+    const householdCheckCall = vi.mocked(db.queryRow).mock.calls[1];
+    expect(householdCheckCall[0]).toEqual([
+      "\n        SELECT name FROM households WHERE id = ",
+      "\n      ",
+    ]);
+    expect(householdCheckCall[1]).toBe(123);
+
+    const invitationInsertCall = vi.mocked(db.queryRow).mock.calls[2];
     expect(invitationInsertCall[0]).toEqual([
       "\n            INSERT INTO household_invitations (household_id, invited_email, status, invitation_code)\n            VALUES (",
       ", ",
