@@ -1,15 +1,12 @@
-import { secret } from "encore.dev/config";
 import { Resend } from "resend";
 
-const resendApiKey = secret("ResendApiKey");
-
 export async function sendInvitationEmail(
+  apiKey: string,
   toEmail: string,
   householdName: string,
   invitationCode: string
 ): Promise<void> {
   try {
-    const apiKey = resendApiKey();
     if (!apiKey) {
       console.warn("[Email] Resend API key not configured, skipping email send");
       return;

@@ -1,7 +1,10 @@
 import { api } from "encore.dev/api";
+import { secret } from "encore.dev/config";
 import { getAuthData } from "~encore/auth";
 import db from "../db";
 import { sendInvitationEmail } from "../email/send";
+
+const resendApiKey = secret("ResendApiKey");
 
 export interface InviteRequest {
   invited_email: string;
@@ -63,7 +66,8 @@ export const invite = api(
           
           // Send invitation email (fire and forget)
           if (householdResult?.name) {
-            sendInvitationEmail(req.invited_email, householdResult.name, invitationCode).catch(err => {
+            const apiKey = resendApiKey();
+            sendInvitationEmail(apiKey, req.invited_email, householdResult.name, invitationCode).catch(err => {
               console.error("[Invite] Email sending failed (non-blocking):", err);
             });
           }
