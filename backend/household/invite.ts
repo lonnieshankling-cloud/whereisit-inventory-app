@@ -10,6 +10,16 @@ export interface InviteResponse {
   id: number;
   invited_email: string;
   status: string;
+  invitation_code: string;
+}
+
+function generateInvitationCode(): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Removed similar chars: I, O, 0, 1
+  let code = '';
+  for (let i = 0; i < 6; i++) {
+    code += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return code;
 }
 
 export const invite = api(
@@ -29,14 +39,35 @@ export const invite = api(
       }
 
       console.log("[Invite] Creating invitation for household:", userResult.household_id);
-      const invitationResult = await db.queryRow<{ id: number; invited_email: string; status: string }>`
-        INSERT INTO household_invitations (household_id, invited_email, status)
-        VALUES (${userResult.household_id}, ${req.invited_email}, 'pending')
-        RETURNING id, invited_email, status
-      `;
+      
+      // Generate unique invitation code with retry logic
+      let invitationCode = generateInvitationCode();
+      let attempts = 0;
+      const maxAttempts = 5;
+      
+      while (attempts < maxAttempts) {
+        try {
+          const invitationResult = await db.queryRow<{ id: number; invited_email: string; status: string; invitation_code: string }>`
+            INSERT INTO household_invitations (household_id, invited_email, status, invitation_code)
+            VALUES (${userResult.household_id}, ${req.invited_email}, 'pending', ${invitationCode})
+            RETURNING id, invited_email, status, invitation_code
+          `;
 
-      console.log("[Invite] Invitation created successfully:", invitationResult);
-      return invitationResult!;
+          console.log("[Invite] Invitation created successfully:", invitationResult);
+          return invitationResult!;
+        } catch (err: any) {
+          // If duplicate code, generate a new one and retry
+          if (err?.message?.includes('idx_household_invitations_code') || err?.message?.includes('duplicate')) {
+            invitationCode = generateInvitationCode();
+            attempts++;
+            console.log(`[Invite] Code collision, retrying with new code (attempt ${attempts})`);
+          } else {
+            throw err;
+          }
+        }
+      }
+      
+      throw new Error("Failed to generate unique invitation code after multiple attempts");
     } catch (err) {
       console.error("[Invite] Failed:", err);
       throw err;

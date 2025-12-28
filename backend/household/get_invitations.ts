@@ -8,6 +8,7 @@ export interface HouseholdInvitation {
   invited_email: string;
   status: string;
   created_at: Date;
+  invitation_code?: string;
 }
 
 export interface GetInvitationsResponse {
@@ -34,7 +35,7 @@ export const getInvitations = api(
       console.log("[GetInvitations] Fetching invitations for household:", userResult.household_id);
 
       const invitationRows = await db.query<HouseholdInvitation>`
-        SELECT id, household_id, invited_email, status, created_at
+        SELECT id, household_id, invited_email, status, created_at, invitation_code
         FROM household_invitations
         WHERE household_id = ${userResult.household_id} AND status = 'pending'
         ORDER BY created_at DESC

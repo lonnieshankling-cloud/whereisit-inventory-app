@@ -42,7 +42,9 @@ export default function SettingsScreen({ visible, onClose }: SettingsScreenProps
   const [showPaywall, setShowPaywall] = useState(false);
   const [showHouseholdManagement, setShowHouseholdManagement] = useState(false);
   const [showCreateHouseholdModal, setShowCreateHouseholdModal] = useState(false);
+  const [showJoinHouseholdModal, setShowJoinHouseholdModal] = useState(false);
   const [newHouseholdName, setNewHouseholdName] = useState('');
+  const [invitationCode, setInvitationCode] = useState('');
   const [household, setHousehold] = useState<any>(null);
   const [householdMembers, setHouseholdMembers] = useState<any[]>([]);
   const [itemCount, setItemCount] = useState(0);
@@ -150,6 +152,32 @@ export default function SettingsScreen({ visible, onClose }: SettingsScreenProps
       console.error('Failed to create household:', error);
       const msg = error?.message || error?.toString() || 'Unknown error';
       Alert.alert('Error', `Failed to create household.\n\nDetails: ${msg}`);
+    }
+  };
+
+  const handleJoinHousehold = async () => {
+    if (!invitationCode.trim()) {
+      Alert.alert('Error', 'Please enter an invitation code');
+      return;
+    }
+
+    if (!isSignedIn) {
+      Alert.alert('Not signed in', 'Please sign in first, then try joining a household.');
+      return;
+    }
+
+    await syncAuthToken();
+
+    try {
+      await householdApi.acceptInvitationByCode(invitationCode.toUpperCase());
+      Alert.alert('Success', 'You have joined the household!');
+      setInvitationCode('');
+      setShowJoinHouseholdModal(false);
+      await loadHouseholdData();
+    } catch (error) {
+      console.error('Failed to join household:', error);
+      const msg = error?.message || error?.toString() || 'Unknown error';
+      Alert.alert('Error', `Failed to join household.\n\nDetails: ${msg}`);
     }
   };
 
@@ -510,6 +538,14 @@ export default function SettingsScreen({ visible, onClose }: SettingsScreenProps
                   <UserPlus color="#FFFFFF" size={20} />
                   <Text style={styles.householdButtonText}>Create Household</Text>
                 </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.householdButton, { backgroundColor: '#10B981', marginTop: 12 }]}
+                  onPress={() => setShowJoinHouseholdModal(true)}
+                >
+                  <Mail color="#FFFFFF" size={20} />
+                  <Text style={styles.householdButtonText}>Join with Code</Text>
+                </TouchableOpacity>
               </>
             ) : (
               // Has household - show management options
@@ -741,6 +777,52 @@ export default function SettingsScreen({ visible, onClose }: SettingsScreenProps
                   onPress={handleCreateHousehold}
                 >
                   <Text style={styles.modalConfirmText}>Create</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </View>
+      )}
+
+      {/* Join Household Modal */}
+      {showJoinHouseholdModal && (
+        <View style={styles.overlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Join Household</Text>
+              <TouchableOpacity onPress={() => setShowJoinHouseholdModal(false)}>
+                <X color="#6B7280" size={24} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.modalBody}>
+              <Text style={styles.inputLabel}>Invitation Code</Text>
+              <TextInput
+                style={[styles.input, { textTransform: 'uppercase', letterSpacing: 2, fontWeight: '700' }]}
+                value={invitationCode}
+                onChangeText={(text) => setInvitationCode(text.toUpperCase())}
+                placeholder="ABC123"
+                placeholderTextColor="#9CA3AF"
+                autoCapitalize="characters"
+                maxLength={6}
+                autoFocus
+              />
+              <Text style={styles.inputHint}>
+                Enter the 6-character code shared by the household owner.
+              </Text>
+
+              <View style={styles.modalActions}>
+                <TouchableOpacity
+                  style={styles.modalCancelButton}
+                  onPress={() => setShowJoinHouseholdModal(false)}
+                >
+                  <Text style={styles.modalCancelText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.modalConfirmButton}
+                  onPress={handleJoinHousehold}
+                >
+                  <Text style={styles.modalConfirmText}>Join</Text>
                 </TouchableOpacity>
               </View>
             </View>

@@ -1,37 +1,22 @@
-import { useState } from "react";
-import { ScanLine, Camera, ScanBarcode } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
+    Sheet,
+    SheetContent,
+    SheetHeader,
+    SheetTitle,
+    SheetTrigger,
 } from "@/components/ui/sheet";
+import { Camera, ScanLine } from "lucide-react";
+import { useState } from "react";
 import { ScanShelfDialog } from "./ScanShelfDialog";
-import { ScanBarcodeDialog } from "./ScanBarcodeDialog";
 
 export const ScanButton = () => {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [scanShelfDialogOpen, setScanShelfDialogOpen] = useState(false);
-  const [scanBarcodeDialogOpen, setScanBarcodeDialogOpen] = useState(false);
 
   const handleScanShelf = () => {
     setSheetOpen(false);
     setScanShelfDialogOpen(true);
-  };
-
-  const handleScanBarcode = () => {
-    setSheetOpen(false);
-    setScanBarcodeDialogOpen(true);
-  };
-
-  const handleProductFound = (productName: string) => {
-    console.log("Product found:", productName);
-  };
-
-  const handleProductNotFound = () => {
-    console.log("Product not found");
   };
 
   return (
@@ -62,20 +47,6 @@ export const ScanButton = () => {
                 </div>
               </div>
             </Button>
-            <Button
-              variant="outline"
-              size="lg"
-              className="justify-start h-auto py-4"
-              onClick={handleScanBarcode}
-            >
-              <ScanBarcode className="h-5 w-5 mr-3" />
-              <div className="text-left">
-                <div className="font-semibold">Scan Barcode</div>
-                <div className="text-sm text-muted-foreground">
-                  Scan a product barcode to quickly add an item
-                </div>
-              </div>
-            </Button>
           </div>
         </SheetContent>
       </Sheet>
@@ -83,12 +54,6 @@ export const ScanButton = () => {
       <ScanShelfDialog
         open={scanShelfDialogOpen}
         onOpenChange={setScanShelfDialogOpen}
-      />
-      <ScanBarcodeDialog
-        open={scanBarcodeDialogOpen}
-        onOpenChange={setScanBarcodeDialogOpen}
-        onProductFound={handleProductFound}
-        onProductNotFound={handleProductNotFound}
       />
     </>
   );

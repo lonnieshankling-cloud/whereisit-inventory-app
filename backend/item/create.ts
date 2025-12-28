@@ -18,6 +18,15 @@ interface CreateItemRequest {
   category?: string | null;
   notes?: string | null;
   tags?: string[];
+  // Phase 1: Barcode & Analysis fields
+  barcodeUpc?: string | null;
+  detectedLanguage?: string | null;
+  confidenceScore?: number | null;
+  analysisMetadata?: any | null;
+  estimatedDimensions?: string | null;
+  expiryAlertDays?: number | null;
+  purchaseDate?: string | null;
+  purchasePrice?: number | null;
 }
 
 export interface Item {
@@ -43,6 +52,15 @@ export interface Item {
   isFavorite: boolean;
   createdAt: Date;
   lastConfirmedAt?: Date;
+  // Phase 1: Barcode & Analysis fields
+  barcodeUpc?: string;
+  detectedLanguage?: string;
+  confidenceScore?: number;
+  analysisMetadata?: any;
+  estimatedDimensions?: string;
+  expiryAlertDays?: number;
+  purchaseDate?: Date;
+  purchasePrice?: number;
 }
 
 // Creates a new item in the inventory.
@@ -61,7 +79,9 @@ export const create = api<CreateItemRequest, Item>(
     const item = await db.queryRow<Item>`
       INSERT INTO items (
         user_id, household_id, location_id, container_id, name, description, photo_url,
-        thumbnail_url, brand, color, size, quantity, expiration_date, category, notes, tags
+        thumbnail_url, brand, color, size, quantity, expiration_date, category, notes, tags,
+        barcode_upc, detected_language, confidence_score, analysis_metadata,
+        estimated_dimensions, expiry_alert_days, purchase_date, purchase_price
       )
       VALUES (
         ${userId},
@@ -79,7 +99,15 @@ export const create = api<CreateItemRequest, Item>(
         ${req.expirationDate ?? null},
         ${req.category ?? null},
         ${req.notes ?? null},
-        ${req.tags ?? []}
+        ${req.tags ?? []},
+        ${req.barcodeUpc ?? null},
+        ${req.detectedLanguage ?? null},
+        ${req.confidenceScore ?? null},
+        ${req.analysisMetadata ? JSON.stringify(req.analysisMetadata) : null},
+        ${req.estimatedDimensions ?? null},
+        ${req.expiryAlertDays ?? 30},
+        ${req.purchaseDate ?? null},
+        ${req.purchasePrice ?? null}
       )
       RETURNING
         id,
@@ -101,7 +129,15 @@ export const create = api<CreateItemRequest, Item>(
         tags,
         is_favorite as "isFavorite",
         created_at as "createdAt",
-        last_confirmed_at as "lastConfirmedAt"
+        last_confirmed_at as "lastConfirmedAt",
+        barcode_upc as "barcodeUpc",
+        detected_language as "detectedLanguage",
+        confidence_score as "confidenceScore",
+        analysis_metadata as "analysisMetadata",
+        estimated_dimensions as "estimatedDimensions",
+        expiry_alert_days as "expiryAlertDays",
+        purchase_date as "purchaseDate",
+        purchase_price as "purchasePrice"
     `;
 
     if (!item) {

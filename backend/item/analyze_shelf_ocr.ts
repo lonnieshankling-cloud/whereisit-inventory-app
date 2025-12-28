@@ -28,6 +28,7 @@ export const analyzeShelfOcr = api(
         image: { source: { imageUri: imageUrl } },
         features: [
           { type: "TEXT_DETECTION" },
+          { type: "BARCODE_DETECTION" }, // PHASE 2: Barcode detection
           { type: "LABEL_DETECTION", maxResults: 20 },
           { type: "LOGO_DETECTION", maxResults: 10 },
           { type: "OBJECT_LOCALIZATION", maxResults: 20 },
@@ -35,6 +36,7 @@ export const analyzeShelfOcr = api(
       });
 
       const textAnnotations = result.textAnnotations || [];
+      const barcodeAnnotations = result.barcodeAnnotations || [];
       const labelAnnotations = result.labelAnnotations || [];
       const logoAnnotations = result.logoAnnotations || [];
       const objectAnnotations = result.localizedObjectAnnotations || [];
@@ -42,6 +44,14 @@ export const analyzeShelfOcr = api(
       const rawOcrText = textAnnotations[0]?.description || "";
       const detectedBrands = logoAnnotations.map((logo) => logo.description || "");
       const textSnippets = textAnnotations.slice(1).map((t) => t.description || "");
+
+      // Log barcode detections
+      if (barcodeAnnotations.length > 0) {
+        console.log(`[Vision API] Detected ${barcodeAnnotations.length} barcode(s)`);
+        barcodeAnnotations.forEach(barcode => {
+          console.log(`  - ${barcode.format}: ${barcode.rawValue}`);
+        });
+      }
 
       const items: DetectedItemData[] = [];
       
@@ -75,7 +85,17 @@ export const analyzeShelfOcr = api(
         }
       }
 
-      return { items, rawOcrText };
+      // Return full Vision API result including barcodes in rawOcrText
+      return { 
+        items, 
+        rawOcrText: JSON.stringify({ 
+          text: rawOcrText,
+          barcodeAnnotations: barcodeAnnotations.map(b => ({
+            format: b.format,
+            rawValue: b.rawValue,
+          })),
+        }) 
+      };
     } catch (error) {
       console.error("Error analyzing shelf:", error);
       return { items: [], rawOcrText: "" };

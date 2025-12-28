@@ -74,6 +74,7 @@ export function MobileBarcodeScannerModal({
   return (
     <Modal visible={visible} animationType="slide">
       <View style={styles.container}>
+        {/* Camera view */}
         <CameraView
           ref={setCamera}
           style={StyleSheet.absoluteFillObject}
@@ -96,44 +97,44 @@ export function MobileBarcodeScannerModal({
           }}
           onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
           enableTorch={flashEnabled}
-        >
-          {/* Scanning overlay */}
-          <View style={styles.overlay}>
-            <View style={styles.topOverlay} />
-            <View style={styles.middleRow}>
-              <View style={styles.sideOverlay} />
-              <View style={styles.scanArea}>
-                <View style={styles.cornerTopLeft} />
-                <View style={styles.cornerTopRight} />
-                <View style={styles.cornerBottomLeft} />
-                <View style={styles.cornerBottomRight} />
-              </View>
-              <View style={styles.sideOverlay} />
-            </View>
-            <View style={styles.bottomOverlay}>
-              <Text style={styles.instructionText}>
-                {scanned ? 'Processing...' : 'Align barcode within frame'}
-              </Text>
-            </View>
-          </View>
+        />
 
-          {/* Controls */}
-          <View style={styles.controls}>
-            <TouchableOpacity 
-              onPress={handleClose} 
-              style={styles.controlButton}
-            >
-              <X color="white" size={28} />
-            </TouchableOpacity>
-            
-            <TouchableOpacity 
-              onPress={toggleFlash} 
-              style={[styles.controlButton, flashEnabled && styles.flashActive]}
-            >
-              <Flashlight color="white" size={28} />
-            </TouchableOpacity>
+        {/* Scanning overlay (absolute positioned, not as children) */}
+        <View style={[styles.overlay, StyleSheet.absoluteFillObject]} pointerEvents="none">
+          <View style={styles.topOverlay} />
+          <View style={styles.middleRow}>
+            <View style={styles.sideOverlay} />
+            <View style={styles.scanArea}>
+              <View style={styles.cornerTopLeft} />
+              <View style={styles.cornerTopRight} />
+              <View style={styles.cornerBottomLeft} />
+              <View style={styles.cornerBottomRight} />
+            </View>
+            <View style={styles.sideOverlay} />
           </View>
-        </CameraView>
+          <View style={styles.bottomOverlay}>
+            <Text style={styles.instructionText}>
+              {scanned ? 'Processing...' : 'Align barcode within frame'}
+            </Text>
+          </View>
+        </View>
+
+        {/* Controls (absolute positioned) */}
+        <View style={styles.controls}>
+          <TouchableOpacity 
+            onPress={handleClose} 
+            style={styles.controlButton}
+          >
+            <X color="white" size={28} />
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            onPress={toggleFlash} 
+            style={[styles.controlButton, flashEnabled && styles.flashActive]}
+          >
+            <Flashlight color="white" size={28} />
+          </TouchableOpacity>
+        </View>
       </View>
     </Modal>
   );

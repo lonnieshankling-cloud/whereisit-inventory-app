@@ -32,6 +32,7 @@ interface PendingInvitation {
   invited_at: string;
   household_id: number;
   status: string;
+  invitation_code?: string;
 }
 
 interface Household {
@@ -82,6 +83,7 @@ export default function HouseholdManagementScreen({ visible, onClose }: Househol
         invited_at: inv.created_at,
         household_id: inv.household_id,
         status: inv.status,
+        invitation_code: inv.invitation_code,
       })) || []);
     } catch (error) {
       console.error('Failed to load household data:', error);
@@ -114,14 +116,18 @@ export default function HouseholdManagementScreen({ visible, onClose }: Househol
         await setAuthToken(token);
       }
       
-      await householdApi.invite(inviteEmail);
-      Alert.alert('Success', `Invitation sent to ${inviteEmail}`);
+      const result = await householdApi.invite(inviteEmail);
+      Alert.alert(
+        'Invitation Code Created!',
+        `Share this code with ${inviteEmail}:\n\n${result.invitation_code}\n\nThey can enter this code in the app to join your household.`,
+        [{ text: 'OK' }]
+      );
       setInviteEmail('');
       setShowInviteModal(false);
       await loadHouseholdData();
     } catch (error) {
       console.error('Failed to send invitation:', error);
-      Alert.alert('Error', 'Failed to send invitation. Please try again.');
+      Alert.alert('Error', 'Failed to create invitation. Please try again.');
     }
   };
 
@@ -334,17 +340,16 @@ export default function HouseholdManagementScreen({ visible, onClose }: Househol
                         <Clock color="#F59E0B" size={16} />
                         <Text style={styles.pendingEmail}>{invite.email}</Text>
                       </View>
+                      {invite.invitation_code && (
+                        <View style={styles.codeContainer}>
+                          <Text style={styles.codeLabel}>Invitation Code:</Text>
+                          <Text style={styles.codeText}>{invite.invitation_code}</Text>
+                        </View>
+                      )}
                       <Text style={styles.pendingLabel}>Awaiting response</Text>
                     </View>
 
                     <View style={styles.pendingActions}>
-                      <TouchableOpacity
-                        style={styles.resendButton}
-                        onPress={() => handleResendInvite(invite.id, invite.email)}
-                      >
-                        <Mail color="#3B82F6" size={16} />
-                        <Text style={styles.resendText}>Resend</Text>
-                      </TouchableOpacity>
                       <TouchableOpacity
                         style={styles.cancelButton}
                         onPress={() => handleCancelInvite(invite.id, invite.email)}
@@ -769,5 +774,27 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     color: '#3B82F6',
+  },
+  codeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: '#FEF3C7',
+    borderRadius: 6,
+    alignSelf: 'flex-start',
+  },
+  codeLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#92400E',
+  },
+  codeText: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#92400E',
+    letterSpacing: 2,
   },
 });

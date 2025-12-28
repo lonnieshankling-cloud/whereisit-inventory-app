@@ -1,36 +1,41 @@
+import { useAuth } from '@clerk/clerk-expo';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
 import { Camera, Check, ChevronDown, Crop, Edit2, Images, Loader, MapPin, Package, Plus, Trash2, X } from 'lucide-react-native';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Alert,
-  FlatList,
-  Image,
-  Modal,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View
+    Alert,
+    FlatList,
+    Image,
+    Modal,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View
 } from 'react-native';
 import { Config } from '../config';
 import { databaseService } from '../services/databaseService';
-import { compressForDisplay } from '../services/imageCompression';
+import { compressForBarcode, compressForDisplay } from '../services/imageCompression';
 import {
-  BoundingBox,
-  createThumbnail,
-  cropImageFromBoundingBox
+    BoundingBox,
+    createThumbnail,
+    cropImageFromBoundingBox
 } from '../services/imageViewerService';
 import { AnimatedButton } from './AnimatedButton';
 import { ImageCropModal } from './ImageCropModal';
 import { ImageViewerModal } from './ImageViewerModal';
+import { MobileBarcodeScannerModal } from './MobileBarcodeScannerModal';
 
 export interface DetectedItem {
   name: string;
   brand?: string;
   category?: string;
   description?: string;
+  // Enriched fields from barcode product lookup
+  features?: string[];
+  ingredients?: string;
   extractedText?: string;
   confidence?: number;
   containerId?: string;
@@ -50,6 +55,7 @@ interface MobileShelfAnalyzerProps {
 }
 
 export function MobileShelfAnalyzer({ visible, onClose, onItemsDetected }: MobileShelfAnalyzerProps) {
+  const { isSignedIn, getToken } = useAuth();
   const [permission, requestPermission] = useCameraPermissions();
   const [capturedPhoto, setCapturedPhoto] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -67,6 +73,8 @@ export function MobileShelfAnalyzer({ visible, onClose, onItemsDetected }: Mobil
   const [showReceiptCamera, setShowReceiptCamera] = useState(false);
   const [receiptPhotoUri, setReceiptPhotoUri] = useState<string | null>(null);
   const [pendingItemsForReceipt, setPendingItemsForReceipt] = useState<DetectedItem[]>([]);
+  const [scanMode, setScanMode] = useState<'barcode' | 'shelf'>('barcode'); // BARCODE-ONLY or SHELF scanning
+  const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
 
   // Auto-request camera permission when modal opens
   useEffect(() => {
@@ -104,12 +112,14 @@ export function MobileShelfAnalyzer({ visible, onClose, onItemsDetected }: Mobil
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       const photo = await cameraRef.current.takePictureAsync({
-        quality: 0.8,
+        quality: 1.0,
       });
       
       if (photo?.uri) {
         // Compress the image before analysis
-        const compressedUri = await compressForDisplay(photo.uri);
+        const compressedUri = scanMode === 'barcode'
+          ? await compressForBarcode(photo.uri)
+          : await compressForDisplay(photo.uri);
         setCapturedPhoto(compressedUri);
       }
     } catch (error) {
@@ -141,11 +151,13 @@ export function MobileShelfAnalyzer({ visible, onClose, onItemsDetected }: Mobil
       const result = await launchImageLibraryAsync({
         mediaTypes: ['images'],
         allowsEditing: true,
-        quality: 0.8,
+        quality: 1.0,
       });
 
       if (!result.canceled && result.assets[0]?.uri) {
-        const compressedUri = await compressForDisplay(result.assets[0].uri);
+        const compressedUri = scanMode === 'barcode'
+          ? await compressForBarcode(result.assets[0].uri)
+          : await compressForDisplay(result.assets[0].uri);
         setCapturedPhoto(compressedUri);
         setDetectedItems([]);
         setShowReview(false);
@@ -160,10 +172,18 @@ export function MobileShelfAnalyzer({ visible, onClose, onItemsDetected }: Mobil
   const uploadImageToBackend = async (base64Image: string): Promise<string> => {
     try {
       setAnalysisStep('Uploading image...');
+
+      // Inject auth token for protected endpoint
+      const { getAuthToken } = await import('../services/api');
+      const token = await getAuthToken();
+      const authHeader = token ? { Authorization: `Bearer ${token}` } : {};
+      if (!token) {
+        console.warn('[Upload] No auth token found. Ensure you are signed in.');
+      }
       
       const response = await fetch(`${Config.BACKEND_URL}/containers/upload-photo`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeader },
         body: JSON.stringify({
           filename: `shelf-${Date.now()}.jpg`,
           contentType: 'image/jpeg',
@@ -274,6 +294,142 @@ export function MobileShelfAnalyzer({ visible, onClose, onItemsDetected }: Mobil
     }
   };
 
+  const detectBarcodesInImage = async (base64Image: string): Promise<DetectedItem[] | null> => {
+    try {
+      console.log('[Barcode] Fast barcode detection starting...');
+      console.log(`[Barcode] Backend URL: ${Config.BACKEND_URL}`);
+      const approxBytesMB = (base64Image.length * 0.75) / (1024 * 1024);
+      console.log(`[Barcode] Image data size: ${approxBytesMB.toFixed(2)}MB`);
+
+      // If payload is too large for backend (~>1.2MB), recompress captured photo and rebuild base64
+      if (approxBytesMB > 1.2 && capturedPhoto) {
+        try {
+          console.log('[Barcode] Payload too large, recompressing to fit API limit...');
+          const { manipulateAsync, SaveFormat } = await import('expo-image-manipulator');
+          const recompressed = await manipulateAsync(
+            capturedPhoto,
+            [{ resize: { width: 1600, height: 1600 } }],
+            { compress: 0.9, format: SaveFormat.JPEG }
+          );
+
+          const res = await fetch(recompressed.uri);
+          const blob = await res.blob();
+          const reader = new FileReader();
+          base64Image = await new Promise<string>((resolve, reject) => {
+            reader.onloadend = () => {
+              const b64 = reader.result as string;
+              resolve(b64.split(',')[1]);
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+          });
+          const newSizeMB = (base64Image.length * 0.75) / (1024 * 1024);
+          console.log(`[Barcode] Recompressed payload size: ${newSizeMB.toFixed(2)}MB`);
+        } catch (rcErr) {
+          console.warn('[Barcode] Recompression failed:', rcErr);
+        }
+      }
+      
+      // Create abort controller with manual timeout (30 seconds for Vision API)
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => {
+        console.warn('[Barcode] Request timeout - aborting after 30 seconds');
+        controller.abort();
+      }, 30000);
+      
+      try {
+        console.log(`[Barcode] Sending request to: ${Config.BACKEND_URL}/item/detect-barcode`);
+        const startTime = Date.now();
+        
+        // Use the lightweight barcode-only endpoint for speed
+        const response = await fetch(`${Config.BACKEND_URL}/item/detect-barcode`, {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'ngrok-skip-browser-warning': 'true', // Skip ngrok interstitial page
+          },
+          body: JSON.stringify({ imageData: base64Image }),
+          signal: controller.signal,
+        });
+
+        const duration = Date.now() - startTime;
+        clearTimeout(timeoutId);
+        console.log(`[Barcode] Response received after ${duration}ms, status: ${response.status}`);
+
+        if (!response.ok) {
+          console.warn(`[Barcode] Detection failed with status ${response.status}`);
+          const errorText = await response.text();
+          console.error(`[Barcode] Error response: ${errorText?.substring(0, 500)}`);
+          return null;
+        }
+
+        const data = await response.json();
+        const barcodes = data.barcodes || [];
+        console.log(`[Barcode] Backend returned ${barcodes.length} barcode(s)`);
+          
+        if (barcodes.length > 0) {
+          console.log(`[Barcode] Found ${barcodes.length} barcode(s)`);
+          
+          // Lookup first barcode
+          const barcode = barcodes[0];
+          const upc = barcode.rawValue;
+          
+          console.log(`[Barcode] Looking up UPC: ${upc}`);
+          // Use real auth token (endpoint requires authentication)
+          const { getAuthToken } = await import('../services/api');
+          const token = await getAuthToken();
+          // Match generated client header semantics: raw token in 'authorization'
+          const authHeader = token ? { authorization: token } : {};
+          const lookupResponse = await fetch(`${Config.BACKEND_URL}/items/barcode/${upc}`, {
+            headers: { ...authHeader },
+          });
+
+          if (lookupResponse.ok) {
+            const product = await lookupResponse.json();
+            console.log(`[Barcode] Product found: ${product.name}`);
+            
+            return [{
+              name: product.name,
+              brand: product.brand || undefined,
+              category: product.category || undefined,
+              description: product.description || `Scanned from barcode ${upc}`,
+              features: Array.isArray(product.features) ? product.features : undefined,
+              ingredients: typeof product.ingredients === 'string' ? product.ingredients : undefined,
+              photoUri: capturedPhoto || undefined,
+              confidence: 1, // 100% confidence as a 0-1 value
+            }];
+          } else {
+            console.log(`[Barcode] Product not found for UPC: ${upc}`);
+          }
+        }
+
+        return null;
+      } catch (error) {
+        clearTimeout(timeoutId);
+        if (error instanceof Error && error.name === 'AbortError') {
+          console.error('[Barcode] Request aborted - likely timeout or network issue');
+          console.error(`[Barcode] Check if backend is running at: ${Config.BACKEND_URL}`);
+          console.error('[Barcode] Check Vision API credentials: google-vision-key.json');
+        }
+        throw error;
+      }
+    } catch (error) {
+      console.error('[Barcode] Detection error:', error);
+      return null;
+    }
+  };
+
+  // Helper to get image size (width/height) for cropping
+  const getImageSize = (uri: string): Promise<{ width: number; height: number }> => {
+    return new Promise((resolve, reject) => {
+      Image.getSize(
+        uri,
+        (width, height) => resolve({ width, height }),
+        (error) => reject(error)
+      );
+    });
+  };
+
   const handleAnalyze = async () => {
     if (!capturedPhoto) return;
 
@@ -281,7 +437,7 @@ export function MobileShelfAnalyzer({ visible, onClose, onItemsDetected }: Mobil
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
     try {
-      // Convert image to base64
+      // Convert image to base64 (fast - cached, ~100ms)
       const response = await fetch(capturedPhoto);
       const blob = await response.blob();
       const reader = new FileReader();
@@ -296,6 +452,161 @@ export function MobileShelfAnalyzer({ visible, onClose, onItemsDetected }: Mobil
         reader.readAsDataURL(blob);
       });
 
+      // ===== BARCODE-ONLY MODE (Fast, ~2-3 seconds) =====
+      if (scanMode === 'barcode') {
+        setAnalysisStep('Scanning barcode...');
+        // First attempt: full image
+        const barcodeDetected = await detectBarcodesInImage(base64Image);
+        
+        if (barcodeDetected && barcodeDetected.length > 0) {
+          // ✅ Barcode found - show result immediately (no fallback)
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          setDetectedItems(barcodeDetected);
+          setShowReview(true);
+          setIsAnalyzing(false);
+          setAnalysisStep('');
+          return;
+        } else {
+          // Second attempt: crop center horizontal strip to improve signal/noise
+          try {
+            const { width, height } = await getImageSize(capturedPhoto);
+            const bandHeight = Math.floor(height * 0.45);
+            const originY = Math.floor((height - bandHeight) / 2);
+            console.log(`[Barcode] Cropping center band: width=${width}, height=${bandHeight}, y=${originY}`);
+
+            const { manipulateAsync, SaveFormat } = await import('expo-image-manipulator');
+            const cropped = await manipulateAsync(
+              capturedPhoto,
+              [{ crop: { originX: 0, originY, width, height: bandHeight } }],
+              { compress: 1.0, format: SaveFormat.JPEG }
+            );
+
+            // Convert cropped to base64
+            const croppedRes = await fetch(cropped.uri);
+            const croppedBlob = await croppedRes.blob();
+            const croppedReader = new FileReader();
+            const croppedBase64 = await new Promise<string>((resolve, reject) => {
+              croppedReader.onloadend = () => {
+                const b64 = croppedReader.result as string;
+                resolve(b64.split(',')[1]);
+              };
+              croppedReader.onerror = reject;
+              croppedReader.readAsDataURL(croppedBlob);
+            });
+
+            const barcodeDetectedCropped = await detectBarcodesInImage(croppedBase64);
+            if (barcodeDetectedCropped && barcodeDetectedCropped.length > 0) {
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              setDetectedItems(barcodeDetectedCropped);
+              setShowReview(true);
+              setIsAnalyzing(false);
+              setAnalysisStep('');
+              return;
+            }
+          } catch (cropErr) {
+            console.warn('[Barcode] Crop attempt failed:', cropErr);
+          }
+
+          // Third attempt: crop center vertical strip
+          try {
+            const { width, height } = await getImageSize(capturedPhoto);
+            const bandWidth = Math.floor(width * 0.45);
+            const originX = Math.floor((width - bandWidth) / 2);
+            console.log(`[Barcode] Cropping center vertical strip: width=${bandWidth}, height=${height}, x=${originX}`);
+
+            const { manipulateAsync, SaveFormat } = await import('expo-image-manipulator');
+            const cropped = await manipulateAsync(
+              capturedPhoto,
+              [{ crop: { originX, originY: 0, width: bandWidth, height } }],
+              { compress: 1.0, format: SaveFormat.JPEG }
+            );
+
+            const croppedRes = await fetch(cropped.uri);
+            const croppedBlob = await croppedRes.blob();
+            const croppedReader = new FileReader();
+            const croppedBase64 = await new Promise<string>((resolve, reject) => {
+              croppedReader.onloadend = () => {
+                const b64 = croppedReader.result as string;
+                resolve(b64.split(',')[1]);
+              };
+              croppedReader.onerror = reject;
+              croppedReader.readAsDataURL(croppedBlob);
+            });
+
+            const barcodeDetectedCroppedV = await detectBarcodesInImage(croppedBase64);
+            if (barcodeDetectedCroppedV && barcodeDetectedCroppedV.length > 0) {
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              setDetectedItems(barcodeDetectedCroppedV);
+              setShowReview(true);
+              setIsAnalyzing(false);
+              setAnalysisStep('');
+              return;
+            }
+          } catch (cropErr) {
+            console.warn('[Barcode] Vertical crop attempt failed:', cropErr);
+          }
+
+          // Fourth attempt: rotate 90 degrees and crop horizontal band (handles rotated barcodes)
+          try {
+            const { manipulateAsync, SaveFormat } = await import('expo-image-manipulator');
+            const rotated = await manipulateAsync(
+              capturedPhoto,
+              [{ rotate: 90 }],
+              { compress: 1.0, format: SaveFormat.JPEG }
+            );
+
+            const { width: rWidth, height: rHeight } = await getImageSize(rotated.uri);
+            const rBandHeight = Math.floor(rHeight * 0.45);
+            const rOriginY = Math.floor((rHeight - rBandHeight) / 2);
+            console.log(`[Barcode] Rotated crop band: width=${rWidth}, height=${rBandHeight}, y=${rOriginY}`);
+
+            const rotatedCrop = await manipulateAsync(
+              rotated.uri,
+              [{ crop: { originX: 0, originY: rOriginY, width: rWidth, height: rBandHeight } }],
+              { compress: 1.0, format: SaveFormat.JPEG }
+            );
+
+            const rcRes = await fetch(rotatedCrop.uri);
+            const rcBlob = await rcRes.blob();
+            const rcReader = new FileReader();
+            const rcBase64 = await new Promise<string>((resolve, reject) => {
+              rcReader.onloadend = () => {
+                const b64 = rcReader.result as string;
+                resolve(b64.split(',')[1]);
+              };
+              rcReader.onerror = reject;
+              rcReader.readAsDataURL(rcBlob);
+            });
+
+            const barcodeDetectedRotated = await detectBarcodesInImage(rcBase64);
+            if (barcodeDetectedRotated && barcodeDetectedRotated.length > 0) {
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              setDetectedItems(barcodeDetectedRotated);
+              setShowReview(true);
+              setIsAnalyzing(false);
+              setAnalysisStep('');
+              return;
+            }
+          } catch (rotErr) {
+            console.warn('[Barcode] Rotated crop attempt failed:', rotErr);
+          }
+
+          // ❌ No barcode found - offer live scanner fallback
+          Alert.alert(
+            'No Barcode Found',
+            'Try the live scanner for faster detection.',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Open Scanner', onPress: () => setShowBarcodeScanner(true) },
+            ]
+          );
+          setIsAnalyzing(false);
+          setAnalysisStep('');
+          return;
+        }
+      }
+
+      // ===== SHELF SCAN MODE (Full analysis, ~10-15 seconds) =====
       // Check if backend is available (not localhost)
       const isBackendAvailable = Config.BACKEND_URL && 
                                   !Config.BACKEND_URL.includes('localhost') &&
@@ -396,6 +707,14 @@ export function MobileShelfAnalyzer({ visible, onClose, onItemsDetected }: Mobil
     setDetectedItems(prev => {
       const updated = [...prev];
       updated[index] = { ...updated[index], [field]: value };
+      return updated;
+    });
+  }, []);
+
+  const handleEditFeatures = useCallback((index: number, features: string[]) => {
+    setDetectedItems(prev => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], features };
       return updated;
     });
   }, []);
@@ -660,18 +979,51 @@ export function MobileShelfAnalyzer({ visible, onClose, onItemsDetected }: Mobil
           </View>
         ) : (
           <>
-            <CameraView ref={cameraRef} style={styles.camera} facing="back">
-              <View style={styles.cameraOverlay}>
+            {/* MODE TOGGLE - Barcode vs Shelf Scanning */}
+            <View style={styles.modeToggleContainer}>
+              <TouchableOpacity
+                style={[styles.modeButton, scanMode === 'barcode' && styles.modeButtonActive]}
+                onPress={() => setScanMode('barcode')}
+              >
+                <Text style={[styles.modeButtonText, scanMode === 'barcode' && styles.modeButtonTextActive]}>
+                  📱 Barcode Only
+                </Text>
+                {scanMode === 'barcode' && <Text style={styles.modeSubtext}>Fast • UPC/EAN</Text>}
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modeButton, scanMode === 'shelf' && styles.modeButtonActive]}
+                onPress={() => setScanMode('shelf')}
+              >
+                <Text style={[styles.modeButtonText, scanMode === 'shelf' && styles.modeButtonTextActive]}>
+                  📦 Shelf Scan
+                </Text>
+                {scanMode === 'shelf' && <Text style={styles.modeSubtext}>Full Analysis</Text>}
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.cameraWrapper}>
+              <CameraView ref={cameraRef} style={StyleSheet.absoluteFillObject} facing="back" />
+              <View style={[styles.cameraOverlay, StyleSheet.absoluteFillObject]} pointerEvents="none">
                 <View style={styles.scanGuide}>
-                  <Text style={styles.guideText}>Position shelf in frame</Text>
+                  <Text style={styles.guideText}>
+                    {scanMode === 'barcode' ? '📱 Align barcode' : 'Position shelf in frame'}
+                  </Text>
                 </View>
               </View>
-            </CameraView>
+            </View>
 
             <View style={styles.controls}>
               <TouchableOpacity style={styles.captureButton} onPress={handleCapture}>
                 <View style={styles.captureButtonInner} />
               </TouchableOpacity>
+              <AnimatedButton
+                style={[styles.uploadButton, isAnalyzing && styles.buttonDisabled]}
+                onPress={() => setShowBarcodeScanner(true)}
+                disabled={isAnalyzing}
+              >
+                <Camera color="#111827" size={18} />
+                <Text style={styles.uploadButtonText}>Open Scanner</Text>
+              </AnimatedButton>
               <AnimatedButton
                 style={[styles.uploadButton, isAnalyzing && styles.buttonDisabled]}
                 onPress={handlePickFromGallery}
@@ -711,6 +1063,7 @@ export function MobileShelfAnalyzer({ visible, onClose, onItemsDetected }: Mobil
                 item={item}
                 index={index}
                 onEdit={handleEditItem}
+                onEditFeatures={handleEditFeatures}
                 onDelete={handleDeleteItem}
                 containers={containers}
                 locations={locations}
@@ -827,17 +1180,18 @@ export function MobileShelfAnalyzer({ visible, onClose, onItemsDetected }: Mobil
           >
             <X color="#fff" size={28} />
           </TouchableOpacity>
-          <CameraView 
-            ref={cameraRef} 
-            style={styles.receiptCamera}
-            facing="back"
-          >
-            <View style={styles.receiptCameraOverlay}>
+          <View style={styles.receiptCameraWrapper}>
+            <CameraView 
+              ref={cameraRef} 
+              style={StyleSheet.absoluteFillObject}
+              facing="back"
+            />
+            <View style={[styles.receiptCameraOverlay, StyleSheet.absoluteFillObject]} pointerEvents="none">
               <View style={styles.receiptScanGuide}>
                 <Text style={styles.receiptGuideText}>Frame receipt in view</Text>
               </View>
             </View>
-          </CameraView>
+          </View>
           <View style={styles.receiptCameraControls}>
             <TouchableOpacity 
               style={styles.receiptCaptureButtonLarge}
@@ -874,6 +1228,71 @@ export function MobileShelfAnalyzer({ visible, onClose, onItemsDetected }: Mobil
           aspectRatio={[1, 1]}
         />
       )}
+      {/* Live Barcode Scanner Fallback */}
+      <MobileBarcodeScannerModal
+        visible={showBarcodeScanner}
+        onClose={() => setShowBarcodeScanner(false)}
+        onBarcodeScanned={async (barcode, type) => {
+          try {
+            console.log(`[Scanner] Detected ${type}: ${barcode}`);
+            const { getAuthToken, setAuthToken } = await import('../services/api');
+            // Try to get a fresh token from Clerk if signed in
+            let token = await getAuthToken();
+            try {
+              if (isSignedIn) {
+                const fresh = await getToken();
+                if (fresh && fresh !== token) {
+                  await setAuthToken(fresh);
+                  token = fresh;
+                }
+              }
+            } catch (refreshErr) {
+              console.warn('[Scanner] Token refresh failed:', refreshErr);
+            }
+            // Match generated client header semantics: raw token in 'authorization'
+            const authHeader = token ? { authorization: token } : {};
+            console.log('[Scanner] Auth token present:', Boolean(token));
+            const lookupResponse = await fetch(`${Config.BACKEND_URL}/items/barcode/${barcode}`, {
+              headers: { ...authHeader },
+            });
+            console.log('[Scanner] Lookup status:', lookupResponse.status);
+            if (lookupResponse.status === 401) {
+              const errText = await lookupResponse.text().catch(() => '');
+              console.warn('[Scanner] Unauthorized lookup. Response:', errText?.substring(0, 200));
+              Alert.alert(
+                'Sign-In Required',
+                'Please sign in to look up products by barcode.'
+              );
+              return;
+            }
+
+            if (lookupResponse.ok) {
+              const product = await lookupResponse.json();
+              console.log(`[Scanner] Product found: ${product.name}`);
+              setDetectedItems([
+                {
+                  name: product.name,
+                  brand: product.brand || undefined,
+                  category: product.category || undefined,
+                  description: product.description || `Scanned from barcode ${barcode}`,
+                  features: Array.isArray(product.features) ? product.features : undefined,
+                  ingredients: typeof product.ingredients === 'string' ? product.ingredients : undefined,
+                  photoUri: capturedPhoto || undefined,
+                  confidence: 1, // 100%
+                },
+              ]);
+              setShowReview(true);
+            } else {
+              const errText = await lookupResponse.text().catch(() => '');
+              console.warn('[Scanner] Lookup failed:', lookupResponse.status, errText?.substring(0, 200));
+              Alert.alert('Product Not Found', `No product found for ${barcode}.`);
+            }
+          } catch (err) {
+            console.error('Scanner lookup failed:', err);
+            Alert.alert('Error', 'Failed to lookup barcode.');
+          }
+        }}
+      />
     </Modal>
   );
 }
@@ -883,6 +1302,7 @@ const ReviewItemCard = React.memo(function ReviewItemCard({
   item, 
   index, 
   onEdit, 
+  onEditFeatures,
   onDelete,
   containers,
   locations,
@@ -893,6 +1313,7 @@ const ReviewItemCard = React.memo(function ReviewItemCard({
   item: DetectedItem; 
   index: number; 
   onEdit: (index: number, field: keyof DetectedItem, value: string) => void;
+  onEditFeatures: (index: number, features: string[]) => void;
   onDelete: (index: number) => void;
   containers: Array<{ id: string; name: string; location_id?: string | null }>;
   locations: Array<{ id: string; name: string }>;
@@ -905,6 +1326,8 @@ const ReviewItemCard = React.memo(function ReviewItemCard({
   const [editedBrand, setEditedBrand] = useState(item.brand || '');
   const [editedCategory, setEditedCategory] = useState(item.category || '');
   const [editedDescription, setEditedDescription] = useState(item.description || '');
+  const [editedFeatures, setEditedFeatures] = useState<string[]>(item.features || []);
+  const [newFeatureText, setNewFeatureText] = useState('');
   const [showContainerPicker, setShowContainerPicker] = useState(false);
   const [showLocationPicker, setShowLocationPicker] = useState(false);
   const [showCreateContainer, setShowCreateContainer] = useState(false);
@@ -968,7 +1391,8 @@ const ReviewItemCard = React.memo(function ReviewItemCard({
     onEdit(index, 'name', editedName);
     onEdit(index, 'brand', editedBrand);
     onEdit(index, 'category', editedCategory);
-    onEdit(index, 'description', editedDescription);
+    // Description stays read-only now per request; keep original unless needed elsewhere
+    onEditFeatures(index, editedFeatures);
     setIsEditing(false);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
@@ -978,7 +1402,20 @@ const ReviewItemCard = React.memo(function ReviewItemCard({
     setEditedBrand(item.brand || '');
     setEditedCategory(item.category || '');
     setEditedDescription(item.description || '');
+    setEditedFeatures(item.features || []);
+    setNewFeatureText('');
     setIsEditing(false);
+  };
+
+  const addFeature = () => {
+    const text = newFeatureText.trim();
+    if (!text) return;
+    setEditedFeatures(prev => Array.from(new Set([...prev, text])));
+    setNewFeatureText('');
+  };
+
+  const removeFeature = (idx: number) => {
+    setEditedFeatures(prev => prev.filter((_, i) => i !== idx));
   };
 
   const handleSelectContainer = (containerId: string, containerName: string) => {
@@ -1163,6 +1600,28 @@ const ReviewItemCard = React.memo(function ReviewItemCard({
               <Text style={styles.detailLabel}>Description: </Text>
               {item.description || '—'}
             </Text>
+            {/* Features */}
+            {Array.isArray(item.features) && item.features.length > 0 && (
+              <View style={styles.featuresContainer}>
+                <Text style={styles.detailLabel}>Features:</Text>
+                <View style={styles.featuresList}>
+                  {item.features.slice(0, 6).map((feat, idx) => (
+                    <View key={idx} style={styles.featureBadge}>
+                      <Text style={styles.featureBadgeText} numberOfLines={1}>{feat}</Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            )}
+            {/* Ingredients */}
+            {item.ingredients && (
+              <View style={styles.ingredientsContainer}>
+                <Text style={styles.detailLabel}>Ingredients:</Text>
+                <Text style={styles.ingredientsText} numberOfLines={3}>
+                  {item.ingredients}
+                </Text>
+              </View>
+            )}
             {item.confidence !== undefined && (
               <Text style={styles.confidenceText}>
                 Confidence: {(item.confidence * 100).toFixed(0)}%
@@ -1206,17 +1665,31 @@ const ReviewItemCard = React.memo(function ReviewItemCard({
               />
             </View>
 
+            {/* Features (editable) */}
             <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Description</Text>
-              <TextInput
-                style={[styles.input, styles.textArea]}
-                value={editedDescription}
-                onChangeText={setEditedDescription}
-                placeholder="Description"
-                placeholderTextColor="#9CA3AF"
-                multiline
-                numberOfLines={3}
-              />
+              <Text style={styles.inputLabel}>Features</Text>
+              <View style={styles.featuresList}>
+                {editedFeatures.map((feat, idx) => (
+                  <View key={`${feat}-${idx}`} style={[styles.featureBadge, { flexDirection: 'row', alignItems: 'center', gap: 6 }]}>
+                    <Text style={styles.featureBadgeText} numberOfLines={1}>{feat}</Text>
+                    <TouchableOpacity onPress={() => removeFeature(idx)}>
+                      <X color="#6B7280" size={14} />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </View>
+              <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+                <TextInput
+                  style={[styles.input, { flex: 1 }]}
+                  value={newFeatureText}
+                  onChangeText={setNewFeatureText}
+                  placeholder="Add a feature (e.g., Organic)"
+                  placeholderTextColor="#9CA3AF"
+                />
+                <TouchableOpacity onPress={addFeature} style={[styles.saveButton, { paddingVertical: 10 }]}> 
+                  <Text style={styles.saveButtonText}>Add</Text>
+                </TouchableOpacity>
+              </View>
             </View>
 
             <View style={styles.editActions}>
@@ -2249,6 +2722,114 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 12,
     marginTop: 20,
+  },
+  // MODE TOGGLE STYLES
+  modeToggleContainer: {
+    flexDirection: 'row',
+    gap: 12,
+    padding: 16,
+    backgroundColor: '#f3f4f6',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+  },
+  modeButton: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    backgroundColor: '#fff',
+    borderWidth: 2,
+    borderColor: '#e5e7eb',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modeButtonActive: {
+    backgroundColor: '#dbeafe',
+    borderColor: '#3b82f6',
+  },
+  modeButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#6b7280',
+    textAlign: 'center',
+  },
+  modeButtonTextActive: {
+    color: '#1e40af',
+  },
+  modeSubtext: {
+    fontSize: 11,
+    color: '#9ca3af',
+    marginTop: 2,
+  },
+  detailLabel: {
+    fontWeight: '600',
+    color: '#374151',
+  },
+  confidenceText: {
+    fontSize: 12,
+    color: '#0891b2',
+    fontWeight: '500',
+    marginTop: 4,
+  },
+  reviewCardInfoColumn: {
+    flex: 1,
+    gap: 6,
+  },
+  itemNumberAndName: {
+    flex: 1,
+  },
+  pickerItemSelected: {
+    backgroundColor: '#dbeafe',
+  },
+  pickerItemTextSelected: {
+    color: '#1e40af',
+    fontWeight: '600',
+  },
+  selectionSection: {
+    gap: 8,
+  },
+  selectionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    backgroundColor: '#f9fafb',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    gap: 8,
+  },
+  selectionButtonText: {
+    flex: 1,
+    fontSize: 14,
+    color: '#374151',
+  },
+  // Enriched product detail styles
+  featuresContainer: {
+    marginTop: 6,
+  },
+  featuresList: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 4,
+  },
+  featureBadge: {
+    backgroundColor: '#E5E7EB',
+    borderRadius: 999,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+  },
+  featureBadgeText: {
+    fontSize: 12,
+    color: '#374151',
+    fontWeight: '500',
+  },
+  ingredientsContainer: {
+    marginTop: 6,
+  },
+  ingredientsText: {
+    fontSize: 12,
+    color: '#6B7280',
   },
 });
 

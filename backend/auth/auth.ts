@@ -44,15 +44,13 @@ export const auth = authHandler<AuthParams, AuthData>(
       
       // Auto-create user record if it doesn't exist (solves foreign key constraint)
       try {
-        console.log("[Auth] Attempting to create/ensure user:", userID);
         await db.exec`
           INSERT INTO users (id)
           VALUES (${userID})
           ON CONFLICT (id) DO NOTHING
         `;
-        console.log("[Auth] ✅ User record ensured in database:", userID);
       } catch (dbErr) {
-        console.error("[Auth] ❌ Failed to create/ensure user record:", dbErr);
+        console.error("[Auth] Failed to create/ensure user record:", dbErr);
         // Don't fail auth if DB operation fails - user might already exist
       }
       

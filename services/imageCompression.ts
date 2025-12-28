@@ -93,3 +93,15 @@ export async function compressForDisplay(uri: string): Promise<string> {
     quality: 0.8,
   });
 }
+
+/**
+ * Compresses an image specifically for barcode detection.
+ * Higher quality and slightly larger dimensions help Vision lock onto bars.
+ */
+export async function compressForBarcode(uri: string): Promise<string> {
+  return compressImage(uri, {
+    maxWidth: 2048,
+    maxHeight: 2048,
+    quality: 1.0,
+  });
+}

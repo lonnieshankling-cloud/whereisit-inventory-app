@@ -1,4 +1,4 @@
-import { Barcode, Camera, ShoppingCart, Zap } from 'lucide-react-native';
+import { Camera, ShoppingCart } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 import { Alert, FlatList, Image, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { AnimatedButton } from '../../components/AnimatedButton';
@@ -645,36 +645,6 @@ function HomeScreenContent() {
               </View>
               <Text style={styles.quickActionTitle} numberOfLines={2}>Shelf Analyzer</Text>
               <Text style={styles.quickActionSubtitle} numberOfLines={1}>Scan shelves</Text>
-            </AnimatedButton>
-
-            {/* Gemini Camera Scan */}
-            <AnimatedButton
-              onPress={() => {
-                setShowFabMenu(false);
-                setShowAddModal(true);
-              }}
-              style={styles.quickActionCard}
-            >
-              <View style={styles.quickActionIconContainer}>
-                <Zap color="#3B82F6" size={32} />
-              </View>
-              <Text style={styles.quickActionTitle} numberOfLines={2}>Gemini Camera</Text>
-              <Text style={styles.quickActionSubtitle} numberOfLines={1}>Add items</Text>
-            </AnimatedButton>
-
-            {/* Barcode Scanner */}
-            <AnimatedButton
-              onPress={() => {
-                setShowFabMenu(false);
-                setShowAddModal(true);
-              }}
-              style={styles.quickActionCard}
-            >
-              <View style={styles.quickActionIconContainer}>
-                <Barcode color="#3B82F6" size={32} />
-              </View>
-              <Text style={styles.quickActionTitle} numberOfLines={2}>Barcode Scanner</Text>
-              <Text style={styles.quickActionSubtitle} numberOfLines={1}>Quick add</Text>
             </AnimatedButton>
 
             {/* Shopping List */}

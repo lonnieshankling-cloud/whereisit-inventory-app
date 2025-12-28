@@ -42,6 +42,7 @@ describe("Get Pending Invitations endpoint", () => {
         invited_email: "invited@example.com",
         status: "pending",
         created_at: new Date("2025-10-22T10:00:00Z"),
+        invitation_code: "ABC123",
       },
     ];
 
@@ -71,7 +72,7 @@ describe("Get Pending Invitations endpoint", () => {
     expect(db.query).toHaveBeenCalledTimes(1);
     const queryCall = vi.mocked(db.query).mock.calls[0];
     expect(queryCall[0]).toEqual([
-      "\n        SELECT id, household_id, invited_email, status, created_at\n        FROM household_invitations\n        WHERE household_id = ",
+      "\n        SELECT id, household_id, invited_email, status, created_at, invitation_code\n        FROM household_invitations\n        WHERE household_id = ",
       " AND status = 'pending'\n        ORDER BY created_at DESC\n      ",
     ]);
     expect(queryCall[1]).toBe(789);

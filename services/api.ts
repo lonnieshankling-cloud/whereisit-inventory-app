@@ -132,22 +132,8 @@ export const householdApi = {
    * Create a new household
    */
   async create(name: string) {
-    console.log('🔵 [API] Creating household, name:', name);
     const client = await getApiClient();
-    
-    try {
-      const result = await Promise.race([
-        client.household.create({ name }),
-        new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Request timed out after 10 seconds')), 10000)
-        )
-      ]);
-      console.log('🟢 [API] Household created successfully:', result);
-      return result;
-    } catch (error) {
-      console.error('🔴 [API] Household creation failed:', error);
-      throw error;
-    }
+    return await client.household.create({ name });
   },
 
   /**
@@ -180,6 +166,14 @@ export const householdApi = {
   async acceptInvitation(invitationId: number) {
     const client = await getApiClient();
     return await client.household.acceptInvitation({ invitation_id: invitationId });
+  },
+
+  /**
+   * Accept an invitation by code
+   */
+  async acceptInvitationByCode(code: string) {
+    const client = await getApiClient();
+    return await client.household.acceptInvitationByCode({ invitation_code: code });
   },
 
   /**

@@ -1,8 +1,8 @@
-import { useState, useEffect } from "react";
-import { useBackend } from "@/lib/backend";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { PackageOpen, Clock, AlertTriangle, TrendingDown, Heart, CheckCircle2 } from "lucide-react";
+import { useBackend } from "@/lib/backend";
+import { AlertTriangle, CheckCircle2, Clock, Heart, PackageOpen, TrendingDown } from "lucide-react";
+import { useEffect, useState } from "react";
 
 interface QuickAccessCardsProps {
   onCategorySelect: (category: string | null) => void;
@@ -25,7 +25,7 @@ export function QuickAccessCards({ onCategorySelect, selectedCategory }: QuickAc
     const fetchCounts = async () => {
       try {
         const [unplaced, recent, expiring, lowStock, favorites, needsConfirmation] = await Promise.all([
-          backend.item.listByPlacedStatus({ status: "not_placed", limit: 1, offset: 0 }),
+          backend.item.listByPlacedStatus("not_placed", { limit: 1, offset: 0 }),
           backend.item.recent({ limit: 1, offset: 0 }),
           backend.item.expiring({ limit: 1, offset: 0 }),
           backend.item.lowStock({ limit: 1, offset: 0 }),

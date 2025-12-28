@@ -21,6 +21,13 @@ export interface LocalItem {
   synced: number; // 0 = not synced, 1 = synced
   created_at: number;
   updated_at: number;
+  // Phase 1: Barcode & Analysis fields
+  barcode_upc?: string;
+  detected_language?: string;
+  confidence_score?: number;
+  analysis_metadata?: string; // JSON string
+  estimated_dimensions?: string;
+  expiry_alert_days?: number;
 }
 
 export interface LocalContainer {
@@ -178,6 +185,39 @@ class DatabaseService {
     } catch (error) {
       // Column already exists, ignore error
     }
+
+    // Phase 1: Add barcode & analysis columns (migration)
+    const phase1Columns = [
+      'barcode_upc TEXT',
+      'detected_language TEXT',
+      'confidence_score INTEGER',
+      'analysis_metadata TEXT',
+      'estimated_dimensions TEXT',
+      'expiry_alert_days INTEGER DEFAULT 30',
+    ];
+    
+    for (const column of phase1Columns) {
+      try {
+        await this.db.execAsync(`ALTER TABLE items ADD COLUMN ${column};`);
+      } catch (error) {
+        // Column already exists, ignore error
+      }
+    }
+
+    // Create barcode_cache table for mobile
+    await this.db.execAsync(`
+      CREATE TABLE IF NOT EXISTS barcode_cache (
+        upc TEXT PRIMARY KEY,
+        product_name TEXT,
+        brand TEXT,
+        category TEXT,
+        image_url TEXT,
+        size TEXT,
+        source TEXT,
+        raw_data TEXT,
+        cached_at INTEGER NOT NULL
+      );
+    `);
 
     // Locations table
     await this.db.execAsync(`

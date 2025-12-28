@@ -44,6 +44,7 @@ describe("Create Household Invitation endpoint", () => {
       id: 456,
       invited_email: "new-member@example.com",
       status: "pending",
+      invitation_code: "ABC123",
     };
 
     vi.mocked(db.queryRow)
@@ -65,17 +66,20 @@ describe("Create Household Invitation endpoint", () => {
 
     const invitationInsertCall = vi.mocked(db.queryRow).mock.calls[1];
     expect(invitationInsertCall[0]).toEqual([
-      "\n        INSERT INTO household_invitations (household_id, invited_email, status)\n        VALUES (",
+      "\n            INSERT INTO household_invitations (household_id, invited_email, status, invitation_code)\n            VALUES (",
       ", ",
-      ", 'pending')\n        RETURNING id, invited_email, status\n      ",
+      ", 'pending', ",
+      ")\n            RETURNING id, invited_email, status, invitation_code\n          ",
     ]);
     expect(invitationInsertCall[1]).toBe(123);
     expect(invitationInsertCall[2]).toBe("new-member@example.com");
+    expect(invitationInsertCall[3]).toMatch(/^[A-Z0-9]{6}$/); // Verify code format
 
     expect(result).toEqual(mockCreatedInvitation);
     expect(result.id).toBe(456);
     expect(result.invited_email).toBe("new-member@example.com");
     expect(result.status).toBe("pending");
+    expect(result.invitation_code).toBe("ABC123");
   });
 
   test("should throw error when user is not part of a household", async () => {
