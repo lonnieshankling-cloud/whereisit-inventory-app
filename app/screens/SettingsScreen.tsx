@@ -2,11 +2,12 @@ import { Analytics } from '@/utils/analytics';
 import { deactivatePremium, getPremiumStatus, PremiumStatus } from '@/utils/premium';
 import { useAuth } from '@clerk/clerk-expo';
 import { useRouter } from 'expo-router';
-import { BarChart2, ChevronRight, Download, FileText, Info, LogOut, Mail, Moon, Shield, Trash2, UserPlus, Users, Vibrate, X } from 'lucide-react-native';
+import { BarChart2, ChevronRight, Copy, Download, FileText, Info, LogOut, Mail, Moon, Shield, Trash2, UserPlus, Users, Vibrate, X } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 import {
     Alert,
     Appearance,
+    Clipboard,
     ScrollView,
     StyleSheet,
     Switch,
@@ -208,6 +209,20 @@ export default function SettingsScreen({ visible, onClose }: SettingsScreenProps
     }
   };
 
+  const handleCopyToken = async () => {
+    if (!authToken) {
+      Alert.alert('No Token', 'No authentication token available. Try refreshing your session first.');
+      return;
+    }
+    try {
+      await Clipboard.setString(`Bearer ${authToken}`);
+      Alert.alert('Copied', 'Bearer token copied to clipboard');
+    } catch (error) {
+      console.error('Failed to copy token:', error);
+      Alert.alert('Error', 'Failed to copy token');
+    }
+  };
+
   const updateSetting = (key: keyof SettingsState, value: any) => {
     setSettings(prev => ({ ...prev, [key]: value }));
   };
@@ -399,6 +414,18 @@ export default function SettingsScreen({ visible, onClose }: SettingsScreenProps
                 {authSyncing ? 'Refreshing session…' : 'Refresh Session Token'}
               </Text>
               <ChevronRight color="#9CA3AF" size={18} />
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={styles.buttonItem} 
+              onPress={handleCopyToken}
+              disabled={!authToken}
+            >
+              <Copy color={authToken ? '#3B82F6' : '#D1D5DB'} size={20} />
+              <Text style={[styles.buttonText, !authToken ? styles.disabledText : null]}>
+                Copy Bearer Token
+              </Text>
+              <ChevronRight color={authToken ? '#9CA3AF' : '#D1D5DB'} size={18} />
             </TouchableOpacity>
           </View>
 
@@ -972,5 +999,8 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: '#FFFFFF',
+  },
+  disabledText: {
+    color: '#D1D5DB',
   },
 });

@@ -261,9 +261,18 @@ export default function HouseholdManagementScreen({ visible, onClose }: Househol
               </Text>
             </View>
           </View>
-          <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-            <X color="#6B7280" size={24} />
-          </TouchableOpacity>
+          <View style={styles.headerRight}>
+            <TouchableOpacity
+              onPress={loadHouseholdData}
+              disabled={loading}
+              style={styles.refreshButton}
+            >
+              <Text style={styles.refreshButtonText}>Refresh</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+              <X color="#6B7280" size={24} />
+            </TouchableOpacity>
+          </View>
         </View>
 
         {loading ? (
@@ -744,5 +753,21 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: '#FFFFFF',
+  },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  refreshButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: '#DBEAFE',
+    borderRadius: 6,
+  },
+  refreshButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#3B82F6',
   },
 });
