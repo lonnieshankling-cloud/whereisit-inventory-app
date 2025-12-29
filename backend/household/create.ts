@@ -13,6 +13,7 @@ export const create = api(
     try {
       const auth = getAuthData()!;
       const userID = auth.userID;
+      console.log("[Household] Creating household for user:", userID);
 
       const userResult = await db.queryRow`
         SELECT household_id FROM users WHERE id = ${userID}
@@ -38,6 +39,7 @@ export const create = api(
         ON CONFLICT (id) DO UPDATE SET household_id = ${household.id}
       `;
 
+      console.log("[Household] Created successfully:", household.id);
       return household;
     } catch (err) {
       console.error("[Household] Creation failed:", err);
