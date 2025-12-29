@@ -112,7 +112,6 @@ export namespace auth {
  */
 import {
     create as api_container_api_create,
-    deleteContainer as api_container_api_deleteContainer,
     list as api_container_api_list,
     listByLocation as api_container_api_listByLocation,
     update as api_container_api_update
@@ -368,7 +367,6 @@ import { bulkDelete as api_item_bulk_delete_bulkDelete } from "~backend/item/bul
 import { bulkUpdateLocation as api_item_bulk_update_location_bulkUpdateLocation } from "~backend/item/bulk_update_location";
 import { confirmLocation as api_item_confirm_location_confirmLocation } from "~backend/item/confirm_location";
 import { create as api_item_create_create } from "~backend/item/create";
-import { deleteItem as api_item_delete_deleteItem } from "~backend/item/delete";
 import { deleteReceipt as api_item_delete_receipt_deleteReceipt } from "~backend/item/delete_receipt";
 import { detectBarcode as api_item_detect_barcode_detectBarcode } from "~backend/item/detect_barcode";
 import { expiring as api_item_expiring_expiring } from "~backend/item/expiring";
@@ -761,7 +759,6 @@ export namespace item {
  * Import the endpoint handlers to derive the types for the client.
  */
 import { create as api_location_create_create } from "~backend/location/create";
-import { deleteLocation as api_location_delete_deleteLocation } from "~backend/location/delete";
 import { list as api_location_list_list } from "~backend/location/list";
 import { update as api_location_update_update } from "~backend/location/update";
 
@@ -823,7 +820,6 @@ export namespace location {
  * Import the endpoint handlers to derive the types for the client.
  */
 import { add as api_shopping_add_add } from "~backend/shopping/add";
-import { deleteItem as api_shopping_delete_deleteItem } from "~backend/shopping/delete";
 import { list as api_shopping_list_list } from "~backend/shopping/list";
 import { lowStockItems as api_shopping_low_stock_items_lowStockItems } from "~backend/shopping/low_stock_items";
 import { update as api_shopping_update_update } from "~backend/shopping/update";
@@ -933,9 +929,9 @@ function makeRecord<K extends string | number | symbol, V>(record: Record<K, V |
 }
 
 import {
-  StreamInOutHandlerFn,
-  StreamInHandlerFn,
-  StreamOutHandlerFn,
+    StreamInHandlerFn,
+    StreamInOutHandlerFn,
+    StreamOutHandlerFn,
 } from "encore.dev/api";
 
 type StreamRequest<Type> = Type extends
@@ -1609,4 +1605,9 @@ export enum ErrCode {
     Unauthenticated = "unauthenticated",
 }
 
-export default new Client(import.meta.env.VITE_CLIENT_TARGET, { requestInit: { credentials: "include" } });
+const defaultTarget =
+    (typeof process !== "undefined" && (process.env?.VITE_CLIENT_TARGET ?? process.env?.EXPO_PUBLIC_BACKEND_URL))
+        ?? Environment("staging");
+
+export const defaultClient = new Client(defaultTarget, { requestInit: { credentials: "include" } });
+export default Client;

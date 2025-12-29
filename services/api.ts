@@ -22,13 +22,13 @@ const getBaseURL = () => {
     return explicit;
   }
 
-  // If no env var, prefer staging cloud environment by default to avoid prod
-  let base = Environment('staging');
+  // Default to production environment for released builds
+  let base = Environment('production');
 
-  // Safety: if something resolved to localhost on a device (shouldn't for staging), override to staging
+  // Safety: if something resolved to localhost on a device (shouldn't for production), override to production
   if (isDevice && (base.includes('localhost') || base.includes('127.0.0.1'))) {
-    console.warn('[API] Localhost base detected on device, falling back to cloud env (staging)');
-    base = Environment('staging');
+    console.warn('[API] Localhost base detected on device, falling back to cloud env (production)');
+    base = Environment('production');
   }
 
   return base;
