@@ -9,8 +9,8 @@ node_modules
 .expo/
 expo-env.d.ts
 
-# Android native build (use Prebuild/CNG)
-/android
+# Android native build
+# Keep android folder tracked for native builds/EAS
 
 # Google Cloud credentials
 backend/google-vision-key.json

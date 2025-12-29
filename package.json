@@ -43,5 +43,10 @@
   "scripts": {
     "android": "expo run:android",
     "ios": "expo run:ios"
+  },
+  "expo": {
+    "install": {
+      "exclude": ["react", "react-dom"]
+    }
   }
 }
