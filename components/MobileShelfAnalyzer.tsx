@@ -78,11 +78,13 @@ export function MobileShelfAnalyzer({ visible, onClose, onItemsDetected }: Mobil
 
   // Auto-request camera permission when modal opens
   useEffect(() => {
+    console.log('📸 Camera permission state:', { visible, permission: permission?.granted, permissionRequested });
     if (visible && !permission?.granted && !permissionRequested) {
+      console.log('📸 Requesting camera permission...');
       setPermissionRequested(true);
       requestPermission();
     }
-  }, [visible, permission, permissionRequested]);
+  }, [visible, permission, permissionRequested, requestPermission]);
 
   // Load containers and locations when review screen opens
   useEffect(() => {
@@ -107,19 +109,26 @@ export function MobileShelfAnalyzer({ visible, onClose, onItemsDetected }: Mobil
   }, []);
 
   const handleCapture = async () => {
-    if (!cameraRef.current) return;
+    if (!cameraRef.current) {
+      console.error('📸 Camera ref is null!');
+      Alert.alert('Error', 'Camera is not ready. Try closing and reopening the app.');
+      return;
+    }
 
     try {
+      console.log('📸 Capturing photo...');
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       const photo = await cameraRef.current.takePictureAsync({
         quality: 1.0,
       });
       
+      console.log('📸 Photo captured:', photo?.uri);
       if (photo?.uri) {
         // Compress the image before analysis
         const compressedUri = scanMode === 'barcode'
           ? await compressForBarcode(photo.uri)
           : await compressForDisplay(photo.uri);
+        console.log('📸 Photo compressed:', compressedUri);
         setCapturedPhoto(compressedUri);
       }
     } catch (error) {
@@ -174,14 +183,23 @@ export function MobileShelfAnalyzer({ visible, onClose, onItemsDetected }: Mobil
       setAnalysisStep('Uploading image...');
 
       // Inject auth token for protected endpoint
-      const { getAuthToken } = await import('../services/api');
+      const { getAuthToken, getBaseURL } = await import('../services/api');
       const token = await getAuthToken();
       const authHeader = token ? { Authorization: `Bearer ${token}` } : {};
       if (!token) {
         console.warn('[Upload] No auth token found. Ensure you are signed in.');
       }
       
-      const response = await fetch(`${Config.BACKEND_URL}/containers/upload-photo`, {
+      // Use proper base URL
+      const baseURL = await (async () => {
+        const explicit = Config.BACKEND_URL?.trim();
+        if (explicit) return explicit;
+        // Fallback to production environment
+        const { Environment } = await import('../frontend/client');
+        return Environment('production');
+      })();
+      
+      const response = await fetch(`${baseURL}/containers/upload-photo`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeader },
         body: JSON.stringify({
@@ -251,16 +269,29 @@ export function MobileShelfAnalyzer({ visible, onClose, onItemsDetected }: Mobil
       const textResponse = (await result.response).text();
       console.log('Gemini enhancement response:', textResponse.substring(0, 200));
 
+      // Try to extract JSON from response
       let jsonText = textResponse;
       const jsonMatch = textResponse.match(/```json\n([\s\S]*?)\n```/);
       if (jsonMatch) {
         jsonText = jsonMatch[1];
       } else {
         const arrayMatch = textResponse.match(/\[[\s\S]*\]/);
-        if (arrayMatch) jsonText = arrayMatch[0];
+        if (arrayMatch) {
+          jsonText = arrayMatch[0];
+        } else {
+          // No JSON found in response - Gemini declined or returned non-JSON text
+          console.warn('[Gemini] No JSON array found in response, returning OCR items only');
+          return ocrItems;
+        }
       }
 
-      const geminiItems: DetectedItem[] = JSON.parse(jsonText);
+      let geminiItems: DetectedItem[] = [];
+      try {
+        geminiItems = JSON.parse(jsonText);
+      } catch (parseError) {
+        console.warn('[Gemini] Failed to parse JSON response, returning OCR items only:', parseError);
+        return ocrItems;
+      }
       const mergedItems: DetectedItem[] = [];
       
       for (const geminiItem of geminiItems) {
@@ -913,10 +944,12 @@ export function MobileShelfAnalyzer({ visible, onClose, onItemsDetected }: Mobil
   };
 
   if (!permission) {
+    console.log('📸 Camera permission is null/loading');
     return null;
   }
 
   if (!permission.granted) {
+    console.log('📸 Camera permission denied, showing permission request screen');
     return (
       <Modal visible={visible} animationType="slide">
         <View style={styles.container}>
@@ -2830,6 +2863,20 @@ const styles = StyleSheet.create({
   ingredientsText: {
     fontSize: 12,
     color: '#6B7280',
+  },
+  // Camera Wrapper Styles (MISSING!)
+  cameraWrapper: {
+    flex: 1,
+    position: 'relative',
+  },
+  cameraOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  receiptCameraWrapper: {
+    flex: 1,
+    backgroundColor: '#000',
   },
 });
 
