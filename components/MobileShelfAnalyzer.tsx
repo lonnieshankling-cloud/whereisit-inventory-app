@@ -73,7 +73,7 @@ export function MobileShelfAnalyzer({ visible, onClose, onItemsDetected }: Mobil
   const [showReceiptCamera, setShowReceiptCamera] = useState(false);
   const [receiptPhotoUri, setReceiptPhotoUri] = useState<string | null>(null);
   const [pendingItemsForReceipt, setPendingItemsForReceipt] = useState<DetectedItem[]>([]);
-  const [scanMode, setScanMode] = useState<'barcode' | 'shelf'>('barcode'); // BARCODE-ONLY or SHELF scanning
+  const [scanMode, setScanMode] = useState<'barcode' | 'shelf'>('shelf'); // Default to SHELF scanning
   const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
 
   // Auto-request camera permission when modal opens
@@ -1036,13 +1036,6 @@ export function MobileShelfAnalyzer({ visible, onClose, onItemsDetected }: Mobil
 
             <View style={styles.cameraWrapper}>
               <CameraView ref={cameraRef} style={StyleSheet.absoluteFillObject} facing="back" />
-              <View style={[styles.cameraOverlay, StyleSheet.absoluteFillObject]} pointerEvents="none">
-                <View style={styles.scanGuide}>
-                  <Text style={styles.guideText}>
-                    {scanMode === 'barcode' ? '📱 Align barcode' : 'Position shelf in frame'}
-                  </Text>
-                </View>
-              </View>
             </View>
 
             <View style={styles.controls}>

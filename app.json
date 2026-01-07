@@ -62,7 +62,8 @@
       ],
       "expo-sqlite",
       "react-native-iap",
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-web-browser"
     ],
     "updates": {
       "enabled": false,

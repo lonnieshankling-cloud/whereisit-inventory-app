@@ -1,5 +1,5 @@
 import { Camera, ShoppingCart } from 'lucide-react-native';
-import { useEffect, useState } from 'react';
+import * as React from 'react';
 import { Alert, FlatList, Image, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { AnimatedButton } from '../../components/AnimatedButton';
 import { EnhancedModal } from '../../components/EnhancedModal';
@@ -26,50 +26,50 @@ function HomeScreenContent() {
     { id: 'backyard', name: 'Backyard' },
     { id: 'dining-room', name: 'Dining Room' },
   ];
-  const [locations, setLocations] = useState<Array<{ id: string; name: string }>>(defaultLocations);
-  const [lowStockCount, setLowStockCount] = useState(0);
-  const [recentlyAddedItems, setRecentlyAddedItems] = useState<LocalItem[]>([]);
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [showShelfAnalyzer, setShowShelfAnalyzer] = useState(false);
-  const [showItemsList, setShowItemsList] = useState(false);
-  const [showContainers, setShowContainers] = useState(false);
-  const [showShoppingList, setShowShoppingList] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
-  const [selectedLocationId, setSelectedLocationId] = useState<string | null>(null);
-  const [locationItemCounts, setLocationItemCounts] = useState<Record<string, number>>({});
-  const [locationContainerCounts, setLocationContainerCounts] = useState<Record<string, number>>({});
-  const [containersByLocation, setContainersByLocation] = useState<Record<string, LocalContainer[]>>({});
-  const [containerItemCounts, setContainerItemCounts] = useState<Record<string, number>>({});
-  const [containerItemsPreview, setContainerItemsPreview] = useState<Record<string, LocalItem[]>>({});
-  const [expandedLocations, setExpandedLocations] = useState<Set<string>>(new Set());
-  const [pendingAddContext, setPendingAddContext] = useState<{
+  const [locations, setLocations] = React.useState<Array<{ id: string; name: string }>>(defaultLocations);
+  const [lowStockCount, setLowStockCount] = React.useState(0);
+  const [recentlyAddedItems, setRecentlyAddedItems] = React.useState<LocalItem[]>([]);
+  const [showAddModal, setShowAddModal] = React.useState(false);
+  const [showShelfAnalyzer, setShowShelfAnalyzer] = React.useState(false);
+  const [showItemsList, setShowItemsList] = React.useState(false);
+  const [showContainers, setShowContainers] = React.useState(false);
+  const [showShoppingList, setShowShoppingList] = React.useState(false);
+  const [showSettings, setShowSettings] = React.useState(false);
+  const [selectedLocationId, setSelectedLocationId] = React.useState<string | null>(null);
+  const [locationItemCounts, setLocationItemCounts] = React.useState<Record<string, number>>({});
+  const [locationContainerCounts, setLocationContainerCounts] = React.useState<Record<string, number>>({});
+  const [containersByLocation, setContainersByLocation] = React.useState<Record<string, LocalContainer[]>>({});
+  const [containerItemCounts, setContainerItemCounts] = React.useState<Record<string, number>>({});
+  const [containerItemsPreview, setContainerItemsPreview] = React.useState<Record<string, LocalItem[]>>({});
+  const [expandedLocations, setExpandedLocations] = React.useState<Set<string>>(new Set());
+  const [pendingAddContext, setPendingAddContext] = React.useState<{
     locationId: string | null;
     containerId: string | null;
     containerName?: string;
   } | null>(null);
-  const [pendingContainerView, setPendingContainerView] = useState<{
+  const [pendingContainerView, setPendingContainerView] = React.useState<{
     locationId: string | null;
     containerId: string;
     containerName?: string;
   } | null>(null);
-  const [showAssignItemsModal, setShowAssignItemsModal] = useState(false);
-  const [targetContainer, setTargetContainer] = useState<LocalContainer | null>(null);
-  const [uncontainedItems, setUncontainedItems] = useState<LocalItem[]>([]);
-  const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set());
-  const [showContainerDetailModal, setShowContainerDetailModal] = useState(false);
-  const [selectedContainer, setSelectedContainer] = useState<LocalContainer | null>(null);
-  const [containerDetailItems, setContainerDetailItems] = useState<LocalItem[]>([]);
-  const [showContainerCamera, setShowContainerCamera] = useState(false);
-  const [containerPhotoTarget, setContainerPhotoTarget] = useState<LocalContainer | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchInitiated, setSearchInitiated] = useState(false);
-  const [showFabMenu, setShowFabMenu] = useState(false);
-  const [showCreateLocationModal, setShowCreateLocationModal] = useState(false);
-  const [newLocationName, setNewLocationName] = useState('');
-  const [showCreateContainerModal, setShowCreateContainerModal] = useState(false);
-  const [newContainerName, setNewContainerName] = useState('');
-  const [newContainerLocation, setNewContainerLocation] = useState<string | null>(defaultLocations[0]?.id || null);
-  const [isSavingQuickAdd, setIsSavingQuickAdd] = useState(false);
+  const [showAssignItemsModal, setShowAssignItemsModal] = React.useState(false);
+  const [targetContainer, setTargetContainer] = React.useState<LocalContainer | null>(null);
+  const [uncontainedItems, setUncontainedItems] = React.useState<LocalItem[]>([]);
+  const [selectedItemIds, setSelectedItemIds] = React.useState<Set<string>>(new Set());
+  const [showContainerDetailModal, setShowContainerDetailModal] = React.useState(false);
+  const [selectedContainer, setSelectedContainer] = React.useState<LocalContainer | null>(null);
+  const [containerDetailItems, setContainerDetailItems] = React.useState<LocalItem[]>([]);
+  const [showContainerCamera, setShowContainerCamera] = React.useState(false);
+  const [containerPhotoTarget, setContainerPhotoTarget] = React.useState<LocalContainer | null>(null);
+  const [searchQuery, setSearchQuery] = React.useState('');
+  const [searchInitiated, setSearchInitiated] = React.useState(false);
+  const [showFabMenu, setShowFabMenu] = React.useState(false);
+  const [showCreateLocationModal, setShowCreateLocationModal] = React.useState(false);
+  const [newLocationName, setNewLocationName] = React.useState('');
+  const [showCreateContainerModal, setShowCreateContainerModal] = React.useState(false);
+  const [newContainerName, setNewContainerName] = React.useState('');
+  const [newContainerLocation, setNewContainerLocation] = React.useState<string | null>(defaultLocations[0]?.id || null);
+  const [isSavingQuickAdd, setIsSavingQuickAdd] = React.useState(false);
 
   const handleAddItem = () => {
     setShowFabMenu(false);
@@ -243,7 +243,7 @@ function HomeScreenContent() {
     }
   };
 
-  useEffect(() => {
+  React.useEffect(() => {
     const initDatabase = async () => {
       try {
         console.log('Initializing database...');
@@ -321,7 +321,7 @@ function HomeScreenContent() {
   };
 
   const toggleLocationExpansion = (locationId: string) => {
-    setExpandedLocations(prev => {
+    setExpandedLocations((prev: Set<string>) => {
       const next = new Set(prev);
       if (next.has(locationId)) {
         next.delete(locationId);
@@ -379,7 +379,7 @@ function HomeScreenContent() {
   };
 
   const handleToggleItemSelection = (itemId: string) => {
-    setSelectedItemIds(prev => {
+    setSelectedItemIds((prev: Set<string>) => {
       const next = new Set(prev);
       if (next.has(itemId)) {
         next.delete(itemId);
@@ -494,7 +494,7 @@ function HomeScreenContent() {
     const hasPhoto = !!(container.local_photo_uri || container.photo_url);
 
     return (
-      <TouchableOpacity 
+          <TouchableOpacity 
         key={container.id} 
         style={styles.containerCard}
         onPress={() => handleContainerPress(container)}
@@ -510,8 +510,7 @@ function HomeScreenContent() {
         ) : (
           <TouchableOpacity 
             style={styles.containerPhotoPlaceholder}
-            onPress={(e) => {
-              e.stopPropagation();
+            onPress={() => {
               handleAddPhotoToContainer(container);
             }}
           >
@@ -528,8 +527,7 @@ function HomeScreenContent() {
             </View>
             <TouchableOpacity
               style={styles.kebabButton}
-              onPress={(e) => {
-                e.stopPropagation();
+              onPress={() => {
                 Alert.alert(
                   'Container actions',
                   container.name,
@@ -565,7 +563,7 @@ function HomeScreenContent() {
           <Text style={styles.emptyItemsText}>No items yet</Text>
         ) : (
           <View style={styles.containerItemsList}>
-            {itemsPreview.map((item) => (
+            {itemsPreview.map((item: LocalItem) => (
               <View key={item.id} style={styles.containerItemRow}>
                 {(item.local_photo_uri || item.photo_url) && (
                   <Image 
@@ -585,8 +583,7 @@ function HomeScreenContent() {
 
         <TouchableOpacity 
           style={styles.addItemButton} 
-          onPress={(e) => {
-            e.stopPropagation();
+          onPress={() => {
             handleAddItemToContainer(container);
           }}
         >
@@ -679,10 +676,10 @@ function HomeScreenContent() {
               nestedScrollEnabled={true}
               showsHorizontalScrollIndicator={false}
               data={recentlyAddedItems.slice(0, 10)}
-              keyExtractor={(item) => item.id}
+              keyExtractor={(item: LocalItem) => item.id}
               contentContainerStyle={styles.recentlyAddedList}
-              renderItem={({ item }) => {
-                const location = locations.find(l => l.id === item.location_id);
+              renderItem={({ item }: { item: LocalItem }) => {
+                const location = locations.find((l: { id: string; name: string }) => l.id === item.location_id);
                 return (
                   <TouchableOpacity
                     style={styles.recentlyAddedItem}
@@ -718,7 +715,7 @@ function HomeScreenContent() {
         <Text style={styles.sectionTitle}>Locations</Text>
 
         {/* List of Locations with expandable containers */}
-        {locations.map((location) => {
+        {locations.map((location: { id: string; name: string }) => {
           const itemCount = locationItemCounts[location.id] || 0;
           const containerCount = locationContainerCounts[location.id] || 0;
           const isExpanded = expandedLocations.has(location.id);
@@ -753,7 +750,7 @@ function HomeScreenContent() {
                   {locationContainers.length === 0 ? (
                     <Text style={styles.emptyContainersText}>No containers yet</Text>
                   ) : (
-                    locationContainers.map(renderContainerCard)
+                    locationContainers.map((c: LocalContainer) => renderContainerCard(c))
                   )}
                 </View>
               )}
@@ -985,7 +982,7 @@ function HomeScreenContent() {
             />
             <Text style={styles.quickModalLabel}>Assign to location</Text>
             <ScrollView style={styles.quickModalList}>
-              {locations.map((location) => (
+              {locations.map((location: { id: string; name: string }) => (
                 <TouchableOpacity
                   key={location.id}
                   style={[styles.locationOption, newContainerLocation === location.id && styles.locationOptionSelected]}
@@ -1044,7 +1041,7 @@ function HomeScreenContent() {
                   Select items to assign ({selectedItemIds.size} selected)
                 </Text>
                 <ScrollView style={{ maxHeight: 400 }}>
-                  {uncontainedItems.map((item) => (
+                  {uncontainedItems.map((item: LocalItem) => (
                     <TouchableOpacity
                       key={item.id}
                       style={[
