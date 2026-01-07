@@ -663,7 +663,10 @@ export function MobileShelfAnalyzer({ visible, onClose, onItemsDetected }: Mobil
         const geminiItems = await enhanceWithGemini(base64Image, []);
         
         if (geminiItems.length === 0) {
-          Alert.alert('No Items Found', 'No items detected. Try another photo with better lighting.');
+          Alert.alert(
+            'No Items Found', 
+            `Gemini AI: No items detected.\n\nChecks:\n✓ Gemini Key: ${Config.GEMINI_API_KEY ? 'Set' : 'MISSING'}\n✓ Backend: ${Config.BACKEND_URL || 'Not set (using Gemini only)'}\n\nTry another photo with better lighting and clear labels.`
+          );
           setCapturedPhoto(null);
           setIsAnalyzing(false);
           setAnalysisStep('');
@@ -684,7 +687,10 @@ export function MobileShelfAnalyzer({ visible, onClose, onItemsDetected }: Mobil
       const finalItems = await enhanceWithGemini(base64Image, ocrItems);
       
       if (finalItems.length === 0) {
-        Alert.alert('No Items Found', 'No items detected. Try another photo with better lighting.');
+        Alert.alert(
+          'No Items Found', 
+          `No items detected after OCR + Gemini.\n\nDebug:\n✓ Backend: ${Config.BACKEND_URL}\n✓ OCR Items: ${ocrItems.length}\n✓ Gemini Key: ${Config.GEMINI_API_KEY ? 'Set' : 'MISSING'}\n\nTry another photo with better lighting.`
+        );
         setCapturedPhoto(null);
         setIsAnalyzing(false);
         setAnalysisStep('');

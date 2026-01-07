@@ -11,7 +11,9 @@ import { Platform } from 'react-native';
 // Safely import react-native-iap with fallback
 let IAP: any = null;
 try {
-  IAP = require('react-native-iap');
+  // EXPO GO WORKAROUND: Comment out real IAP to prevent native crashes in Expo Go
+  // IAP = require('react-native-iap');
+  console.warn('⚠️ IAP disabled for Expo Go compatibility'); // Stub for Expo Go
 } catch (error) {
   console.warn('⚠️ react-native-iap not available - using mock billing (rebuild app with: npx expo run:android)');
 }
