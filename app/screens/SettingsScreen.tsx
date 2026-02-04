@@ -706,6 +706,19 @@ export default function SettingsScreen({ visible, onClose }: SettingsScreenProps
 
             <TouchableOpacity 
               style={styles.settingItem}
+              onPress={() => Alert.alert('Terms of Service', 'By using WhereIsIt Inventory, you agree to our Terms of Service.\n\nKey points:\n• Use the app for personal inventory management\n• Keep your account secure\n• Do not upload illegal content\n• We provide the app "as is"\n• Premium features via in-app purchase\n\nFull terms available in the app repository.')}
+            >
+              <View style={styles.settingLabel}>
+                <FileText color="#6B7280" size={20} />
+                <Text style={styles.settingText}>Terms of Service</Text>
+              </View>
+              <ChevronRight color="#9CA3AF" size={18} />
+            </TouchableOpacity>
+
+            <View style={styles.divider} />
+
+            <TouchableOpacity 
+              style={styles.settingItem}
               onPress={() => Alert.alert('Contact Support', 'support@whereisit-inventory.com\n\nFor issues or suggestions, please email us.')}
             >
               <View style={styles.settingLabel}>

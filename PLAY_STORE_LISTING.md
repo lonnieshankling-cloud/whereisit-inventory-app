@@ -114,6 +114,7 @@ Start organizing your home today with WhereIsIt Inventory!
 
 **Support:** support@whereisit-inventory.com
 **Privacy Policy:** https://lonnieshankling-cloud.github.io/whereisit-inventory-app/PRIVACY_POLICY
+**Terms of Service:** https://lonnieshankling-cloud.github.io/whereisit-inventory-app/TERMS_OF_SERVICE
 **Source Code:** https://github.com/lonnieshankling-cloud/whereisit-inventory-app
 
 *(2679 characters - plenty of room to add more)*
@@ -161,6 +162,7 @@ inventory, organization, storage, home, household, tracking, items, belongings, 
 **Email:** support@whereisit-inventory.com
 **Website:** https://github.com/lonnieshankling-cloud/whereisit-inventory-app
 **Privacy Policy URL:** https://lonnieshankling-cloud.github.io/whereisit-inventory-app/PRIVACY_POLICY
+**Terms of Service URL:** https://lonnieshankling-cloud.github.io/whereisit-inventory-app/TERMS_OF_SERVICE
 
 ---
 
@@ -288,6 +290,7 @@ Consider translating to:
 - [ ] Feature graphic (1024x500) created
 - [ ] App icon (512x512) ready
 - [ ] Privacy policy URL active and accessible
+- [ ] Terms of service URL active and accessible
 - [ ] Contact email set up
 - [ ] Content rating questionnaire completed
 - [ ] AAB/APK file built and tested
