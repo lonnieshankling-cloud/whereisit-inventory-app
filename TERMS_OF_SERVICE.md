@@ -2,6 +2,11 @@
 
 **Last Updated: February 4, 2026**
 
+> **Note:** Before publishing to the Play Store, replace the following placeholders:
+> - `[Your State]` and `[Your County/State]` in the Governing Law section
+> - `[Your Business Address]` in the Contact Information section
+> - Review and update any other sections as needed for your specific business entity
+
 ## Agreement to Terms
 
 By downloading, installing, or using WhereIsIt Inventory ("the App"), you agree to be bound by these Terms of Service ("Terms"). If you do not agree to these Terms, do not use the App.
