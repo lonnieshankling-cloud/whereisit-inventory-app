@@ -1,5 +1,19 @@
 # Google Play Store Listing - WhereIsIt Inventory
 
+## Package Name (Application ID)
+
+**IMPORTANT:** `com.whereisit.inventory`
+
+> ⚠️ **Note:** When Google Play Console asks for "Package name" or "Application ID", enter **ONLY** `com.whereisit.inventory` (not a full URL).
+> 
+> This package name is defined in:
+> - `app.json` (line 21): `"package": "com.whereisit.inventory"`
+> - `android/app/build.gradle` (line 92): `applicationId 'com.whereisit.inventory'`
+>
+> For more details, see [GOOGLE_PLAY_PACKAGE_NAME.md](./GOOGLE_PLAY_PACKAGE_NAME.md)
+
+---
+
 ## App Name
 **WhereIsIt Inventory** (30 characters max: 21/30)
 
@@ -283,6 +297,7 @@ Consider translating to:
 
 ## Checklist Before Submission
 
+- [ ] **Package name verified:** `com.whereisit.inventory` (NOT a URL)
 - [ ] App name decided and available
 - [ ] Short description (under 80 chars)
 - [ ] Full description (compelling and informative)
