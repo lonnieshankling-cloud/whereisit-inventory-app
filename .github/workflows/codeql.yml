@@ -1,0 +1,70 @@
+name: "CodeQL"
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  schedule:
+    - cron: '30 1 * * 0'
+
+jobs:
+  analyze:
+    name: Analyze
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [ 'java-kotlin', 'javascript-typescript' ]
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    # Initialize CodeQL tools for scanning.
+    - name: Initialize CodeQL
+      uses: github/codeql-action/init@v3
+      with:
+        languages: ${{ matrix.language }}
+
+    # --- Custom Build Steps for Android (Java/Kotlin) ---
+    # We manually build because the default CodeQL autobuilder fails to run
+    # the Node.js scripts required by React Native's Gradle build.
+    
+    - if: matrix.language == 'java-kotlin'
+      name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+    
+    - if: matrix.language == 'java-kotlin'
+      name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+
+    - if: matrix.language == 'java-kotlin'
+      name: Install Dependencies
+      # Installs the node_modules needed by android/app/build.gradle
+      run: npm install
+
+    - if: matrix.language == 'java-kotlin'
+      name: Build Android
+      run: |
+        cd android
+        chmod +x gradlew
+        ./gradlew assembleRelease --no-daemon
+
+    # --- End Custom Build ---
+
+    - name: Perform CodeQL Analysis
+      uses: github/codeql-action/analyze@v3
+      with:
+        category: "/language:${{ matrix.language }}"
