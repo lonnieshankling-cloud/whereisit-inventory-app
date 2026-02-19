@@ -12,6 +12,15 @@ expo-env.d.ts
 # Android native build
 # Keep android folder tracked for native builds/EAS
 
+# Build artifacts (never commit)
+eas-artifact/
+eas-artifact-latest/
+eas-build.tar.gz
+eas-build-latest.tar.gz
+*.apk
+*.aab
+*.tar.gz
+
 # Google Cloud credentials
 backend/google-vision-key.json
 
