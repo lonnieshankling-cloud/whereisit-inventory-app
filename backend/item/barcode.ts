@@ -35,7 +35,7 @@ export const lookupBarcode = api<LookupBarcodeRequest, LookupBarcodeResponse>(
         });
 
         if (olResp.ok) {
-          const book = await olResp.json();
+          const book: any = await olResp.json();
           const title: string = book.title || 'Unknown Book';
           let authors: string | undefined = undefined;
           try {
@@ -47,7 +47,7 @@ export const lookupBarcode = api<LookupBarcodeRequest, LookupBarcodeResponse>(
                   headers: { 'User-Agent': 'WhereIsItInventory/1.0' },
                 });
                 if (aResp.ok) {
-                  const a = await aResp.json();
+                  const a: any = await aResp.json();
                   if (a && a.name) authorNames.push(a.name);
                 }
               }
@@ -121,7 +121,7 @@ export const lookupBarcode = api<LookupBarcodeRequest, LookupBarcodeResponse>(
           console.log(`[Barcode] Open Library miss; trying Google Books for ISBN: ${isbn}`);
           const gbResp = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}`);
           if (gbResp.ok) {
-            const gb = await gbResp.json();
+            const gb: any = await gbResp.json();
             if (Array.isArray(gb.items) && gb.items.length > 0) {
               const info = gb.items[0].volumeInfo || {};
               const product: LookupBarcodeResponse = {
@@ -222,7 +222,7 @@ export const lookupBarcode = api<LookupBarcodeRequest, LookupBarcodeResponse>(
       );
 
       if (offResponse.ok) {
-        const offData = await offResponse.json();
+        const offData: any = await offResponse.json();
         
         if (offData.status === 1 && offData.product) {
           const labels: string[] = (offData.product.labels || '')

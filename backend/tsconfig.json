@@ -1,5 +1,12 @@
 {
   "$schema": "https://json.schemastore.org/tsconfig",
+  "include": [
+    "**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "frontend/dist"
+  ],
   "compilerOptions": {
     "lib": [
       "ES2022"
@@ -23,6 +30,5 @@
     "declaration": true,
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true
-  },
-  "extends": "expo/tsconfig.base"
+  }
 }

@@ -18,6 +18,11 @@ interface AnalyzeShelfResponse {
   rawOcrText: string;
 }
 
+interface DetectedBarcode {
+  format?: string;
+  rawValue?: string;
+}
+
 export const analyzeShelfOcr = api(
   { expose: true, method: "POST", path: "/item/analyze-shelf-ocr", auth: false },
   async ({ imageUrl }: AnalyzeShelfRequest): Promise<AnalyzeShelfResponse> => {
@@ -36,7 +41,8 @@ export const analyzeShelfOcr = api(
       });
 
       const textAnnotations = result.textAnnotations || [];
-      const barcodeAnnotations = result.barcodeAnnotations || [];
+      const barcodeAnnotations: DetectedBarcode[] =
+        ((result as unknown as { barcodeAnnotations?: DetectedBarcode[] }).barcodeAnnotations ?? []);
       const labelAnnotations = result.labelAnnotations || [];
       const logoAnnotations = result.logoAnnotations || [];
       const objectAnnotations = result.localizedObjectAnnotations || [];
@@ -48,7 +54,7 @@ export const analyzeShelfOcr = api(
       // Log barcode detections
       if (barcodeAnnotations.length > 0) {
         console.log(`[Vision API] Detected ${barcodeAnnotations.length} barcode(s)`);
-        barcodeAnnotations.forEach(barcode => {
+        barcodeAnnotations.forEach((barcode) => {
           console.log(`  - ${barcode.format}: ${barcode.rawValue}`);
         });
       }
@@ -90,7 +96,7 @@ export const analyzeShelfOcr = api(
         items, 
         rawOcrText: JSON.stringify({ 
           text: rawOcrText,
-          barcodeAnnotations: barcodeAnnotations.map(b => ({
+          barcodeAnnotations: barcodeAnnotations.map((b) => ({
             format: b.format,
             rawValue: b.rawValue,
           })),
