@@ -1,4 +1,5 @@
 import { Analytics, AnalyticsStats } from '@/utils/analytics';
+import { Premium } from '@/utils/premium';
 import { Activity, BarChart3, Calendar } from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
 import {
@@ -205,6 +206,33 @@ export default function AnalyticsDebugScreen() {
 
       {/* Actions */}
       <View style={styles.actions}>
+        {__DEV__ && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Premium Debug (Mock)</Text>
+            <View style={{ gap: 8 }}>
+              <TouchableOpacity 
+                style={[styles.button, { backgroundColor: '#34C759' }]} 
+                onPress={() => {
+                  Premium.activatePremium();
+                  Alert.alert('Success', 'Mock Premium ACTIVATED');
+                }}
+              >
+                <Text style={styles.buttonText}>Force Mock Premium (ON)</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={[styles.button, { backgroundColor: '#FF9500' }]} 
+                onPress={() => {
+                  Premium.deactivatePremium();
+                  Alert.alert('Success', 'Mock Premium DEACTIVATED');
+                }}
+              >
+                <Text style={styles.buttonText}>Force Mock Free (OFF)</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
         <TouchableOpacity style={styles.button} onPress={loadAnalytics}>
           <Text style={styles.buttonText}>Refresh</Text>
         </TouchableOpacity>

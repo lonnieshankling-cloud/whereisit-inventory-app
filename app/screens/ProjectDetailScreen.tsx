@@ -2,20 +2,21 @@
 
 import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Calendar, CheckCircle, CheckSquare, Circle, Link as LinkIcon, Plus, Sparkles, Square, Trash2, X } from 'lucide-react-native';
+import { Calendar, CheckCircle, CheckSquare, Circle, Link as LinkIcon, Plus, ShoppingCart, Sparkles, Square, Trash2, X } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    Modal,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View
+  ActivityIndicator,
+  Alert,
+  Modal,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
 } from 'react-native';
 import { databaseService, LocalItem, LocalProject, LocalProjectItem } from '../../services/databaseService';
+import { shoppingListService } from '../../services/shoppingListService';
 import { generateProjectRequirements } from '../../utils/gemini';
 
 interface ProjectItemWithInventory extends LocalProjectItem {
@@ -103,6 +104,7 @@ export default function ProjectDetailScreen() {
   const [aiLoading, setAiLoading] = useState(false);
   const [aiSuggestions, setAiSuggestions] = useState<AISuggestion[]>([]);
   const [showAISuggestions, setShowAISuggestions] = useState(false);
+  const [addedToShoppingList, setAddedToShoppingList] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     loadProject();
@@ -242,6 +244,23 @@ export default function ProjectDetailScreen() {
     }
   };
 
+  const handleAddToShoppingList = async (itemLabel: string) => {
+    try {
+      await shoppingListService.addItem(itemLabel);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      
+      setAddedToShoppingList(prev => {
+        const next = new Set(prev);
+        next.add(itemLabel);
+        return next;
+      });
+      
+    } catch (error) {
+      console.error('Failed to add to shopping list:', error);
+      Alert.alert('Error', 'Failed to add item to shopping list');
+    }
+  };
+
   const handleUnlinkItem = async (projectItem: LocalProjectItem) => {
     Alert.alert(
       'Unlink Item',
@@ -314,7 +333,7 @@ export default function ProjectDetailScreen() {
     setAiLoading(true);
     try {
       const title = project.name || project.description || 'My Project';
-      const suggestions = await generateProjectRequirements(title);
+      const suggestions = await generateProjectRequirements(title, project.description || undefined);
 
       if (!suggestions.length) {
         Alert.alert('No Suggestions', 'AI did not return any requirements. Try another title.');
@@ -403,6 +422,17 @@ export default function ProjectDetailScreen() {
           <Text style={styles.itemName}>{item.name}</Text>
           {item.notes && <Text style={styles.itemNotes}>{item.notes}</Text>}
         </View>
+        <TouchableOpacity
+          style={[styles.linkButton, { marginRight: 8 }]}
+          onPress={() => handleAddToShoppingList(item.name)}
+          disabled={addedToShoppingList.has(item.name)}
+        >
+          {addedToShoppingList.has(item.name) ? (
+             <CheckSquare color="#10B981" size={18} />
+          ) : (
+             <ShoppingCart color="#3B82F6" size={18} />
+          )}
+        </TouchableOpacity>
         <TouchableOpacity
           style={styles.linkButton}
           onPress={() => handleLinkInventoryItem(item)}
@@ -650,38 +680,54 @@ export default function ProjectDetailScreen() {
 
             <ScrollView style={styles.aiList}>
               {aiSuggestions.map((suggestion) => (
-                <TouchableOpacity
-                  key={suggestion.label}
-                  style={styles.aiItem}
-                  onPress={() => toggleSuggestionSelection(suggestion.label)}
-                  activeOpacity={0.8}
-                >
-                  {suggestion.selected ? (
-                    <CheckSquare color="#10B981" size={20} />
-                  ) : (
-                    <Square color="#6B7280" size={20} />
-                  )}
+                <View key={suggestion.label} style={styles.aiItemWrapper}>
+                  <TouchableOpacity
+                    style={styles.aiItem}
+                    onPress={() => toggleSuggestionSelection(suggestion.label)}
+                    activeOpacity={0.8}
+                  >
+                    {suggestion.selected ? (
+                      <CheckSquare color="#10B981" size={20} />
+                    ) : (
+                      <Square color="#6B7280" size={20} />
+                    )}
 
-                  <View style={styles.aiItemTextContainer}>
-                    <Text style={styles.aiItemLabel} numberOfLines={2}>{suggestion.label}</Text>
-                    <View style={styles.aiBadgeContainer}>
-                      {suggestion.matchType === 'exact' && (
-                        <Text style={[styles.aiBadge, styles.aiBadgeExact]}>In Stock</Text>
-                      )}
-                      {suggestion.matchType === 'partial' && (
-                        <Text style={[styles.aiBadge, styles.aiBadgePartial]}>Likely In Stock</Text>
-                      )}
-                      {suggestion.matchType === 'none' && (
-                        <Text style={[styles.aiBadge, styles.aiBadgeMissing]}>Missing</Text>
+                    <View style={styles.aiItemTextContainer}>
+                      <Text style={styles.aiItemLabel} numberOfLines={2}>{suggestion.label}</Text>
+                      <View style={styles.aiBadgeContainer}>
+                        {suggestion.matchType === 'exact' && (
+                          <Text style={[styles.aiBadge, styles.aiBadgeExact]}>In Stock</Text>
+                        )}
+                        {suggestion.matchType === 'partial' && (
+                          <Text style={[styles.aiBadge, styles.aiBadgePartial]}>Likely In Stock</Text>
+                        )}
+                        {suggestion.matchType === 'none' && (
+                          <Text style={[styles.aiBadge, styles.aiBadgeMissing]}>Missing</Text>
+                        )}
+                      </View>
+                      {suggestion.matchedItem && (
+                        <Text style={styles.aiMatchDetail} numberOfLines={1}>
+                          Matched: {suggestion.matchedItem.name}
+                        </Text>
                       )}
                     </View>
-                    {suggestion.matchedItem && (
-                      <Text style={styles.aiMatchDetail} numberOfLines={1}>
-                        Matched: {suggestion.matchedItem.name}
-                      </Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity
+                    style={[
+                        styles.shoppingListButton,
+                        addedToShoppingList.has(suggestion.label) && styles.shoppingListButtonAdded
+                    ]}
+                    onPress={() => !addedToShoppingList.has(suggestion.label) && handleAddToShoppingList(suggestion.label)}
+                    disabled={addedToShoppingList.has(suggestion.label)}
+                  >
+                    {addedToShoppingList.has(suggestion.label) ? (
+                        <CheckCircle color="#10B981" size={20} />
+                    ) : (
+                        <ShoppingCart color="#3B82F6" size={20} />
                     )}
-                  </View>
-                </TouchableOpacity>
+                  </TouchableOpacity>
+                </View>
               ))}
             </ScrollView>
 
@@ -819,6 +865,10 @@ const styles = StyleSheet.create({
   },
   progressInfo: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
   progressActions: {
     marginTop: 12,
     flexDirection: 'row',
@@ -837,9 +887,8 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '600',
   },
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
+  buttonDisabled: {
+    opacity: 0.5,
   },
   progressText: {
     fontSize: 14,
@@ -1006,11 +1055,28 @@ const styles = StyleSheet.create({
   aiList: {
     maxHeight: 320,
   },
+  aiItemWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
   aiItem: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 10,
     paddingVertical: 10,
+  },
+  shoppingListButton: {
+    padding: 10,
+    backgroundColor: '#EFF6FF',
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  shoppingListButtonAdded: {
+    backgroundColor: '#ECFDF5',
   },
   aiItemTextContainer: {
     flex: 1,

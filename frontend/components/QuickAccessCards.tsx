@@ -25,7 +25,7 @@ export function QuickAccessCards({ onCategorySelect, selectedCategory }: QuickAc
     const fetchCounts = async () => {
       try {
         const [unplaced, recent, expiring, lowStock, favorites, needsConfirmation] = await Promise.all([
-          backend.item.listByPlacedStatus("not_placed", { limit: 1, offset: 0 }),
+          backend.item.listByPlacedStatus({ status: "not_placed", limit: 1, offset: 0 }),
           backend.item.recent({ limit: 1, offset: 0 }),
           backend.item.expiring({ limit: 1, offset: 0 }),
           backend.item.lowStock({ limit: 1, offset: 0 }),

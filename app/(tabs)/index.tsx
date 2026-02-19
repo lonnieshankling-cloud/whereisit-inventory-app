@@ -1,11 +1,16 @@
-import { Camera, ShoppingCart } from 'lucide-react-native';
+import { useAuth } from '@clerk/clerk-expo';
+import { useRouter } from 'expo-router';
+import { Camera, ClipboardList, Search as SearchIcon, ShoppingCart } from 'lucide-react-native';
 import * as React from 'react';
 import { Alert, FlatList, Image, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import RevenueCatUI, { PAYWALL_RESULT } from 'react-native-purchases-ui';
 import { AnimatedButton } from '../../components/AnimatedButton';
+import { DashboardSkeleton } from '../../components/DashboardSkeleton';
 import { EnhancedModal } from '../../components/EnhancedModal';
 import { MobileCamera } from '../../components/MobileCamera';
 import { MobileShelfAnalyzer } from '../../components/MobileShelfAnalyzer';
 import { databaseService, LocalContainer, LocalItem } from '../../services/databaseService';
+import { ENTITLEMENT_ID, refreshPremiumStatus } from '../../utils/premium';
 import AddItemScreen from '../screens/AddItemScreen';
 import ContainerManagementScreen from '../screens/ContainerManagementScreen';
 import ItemsListScreen from '../screens/ItemsListScreen';
@@ -13,6 +18,9 @@ import SettingsScreen from '../screens/SettingsScreen';
 import ShoppingListScreen from '../screens/ShoppingListScreen';
 
 function HomeScreenContent() {
+  const router = useRouter();
+  const { isSignedIn } = useAuth();
+  const [isLoading, setIsLoading] = React.useState(true);
   const defaultLocations: Array<{ id: string; name: string }> = [
     { id: 'bedroom', name: 'Bedroom' },
     { id: 'entertainment-room', name: 'Entertainment Room' },
@@ -77,9 +85,38 @@ function HomeScreenContent() {
     setShowAddModal(true);
   };
 
-  const handleShelfScan = () => {
+  const handleShelfScan = async () => {
     setShowFabMenu(false);
-    setShowShelfAnalyzer(true);
+    try {
+      const latestStatus = await refreshPremiumStatus();
+      if (latestStatus.active) {
+        setShowShelfAnalyzer(true);
+        return;
+      }
+
+      const paywallResult = await RevenueCatUI.presentPaywallIfNeeded({
+        requiredEntitlementIdentifier: ENTITLEMENT_ID,
+      });
+      console.log('[ShelfScan] Paywall result:', paywallResult);
+      if (
+        paywallResult === PAYWALL_RESULT.NOT_PRESENTED ||
+        paywallResult === PAYWALL_RESULT.PURCHASED ||
+        paywallResult === PAYWALL_RESULT.RESTORED
+      ) {
+        setShowShelfAnalyzer(true);
+        return;
+      }
+      Alert.alert(
+        'Upgrade Required',
+        'Shelf scanning is a Pro feature. Please complete the upgrade to continue.'
+      );
+    } catch (e) {
+      console.error('[ShelfScan] Paywall error:', e);
+      Alert.alert(
+        'Unable to Open Shelf Scanner',
+        'We ran into a billing issue. Please try again, or open Settings → Upgrade to complete the purchase.'
+      );
+    }
   };
 
   const handleItemsDetected = async (items: Array<{
@@ -253,6 +290,8 @@ function HomeScreenContent() {
         console.log('Stats loaded');
       } catch (error) {
         console.error('Error initializing database:', error);
+      } finally {
+        setIsLoading(false);
       }
     };
     initDatabase();
@@ -593,45 +632,47 @@ function HomeScreenContent() {
     );
   };
 
+  if (isLoading) {
+    return <DashboardSkeleton />;
+  }
+
   return (
     <View style={styles.container}>
       {/* Title Area */}
       <View style={styles.header}>
         <Text style={styles.title}>WhereIsIt?</Text>
+        <TouchableOpacity 
+          onPress={() => router.push('/screens/SearchItemsScreen')}
+          style={styles.headerSearchButton}
+        >
+          <SearchIcon color="#111827" size={24} />
+        </TouchableOpacity>
       </View>
 
       {/* Search Bar */}
-      <View style={styles.searchContainer}>
+      <TouchableOpacity 
+        style={styles.searchContainer}
+        activeOpacity={0.9}
+        onPress={() => router.push('/screens/SearchItemsScreen')}
+      >
         <View style={styles.searchInputWrapper}>
           <Text style={styles.searchIcon}>🔍</Text>
-          <TextInput 
-            placeholder="Search items by name, barcode, or description..." 
-            style={styles.searchBar}
-            placeholderTextColor="#999"
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            onSubmitEditing={handleSearchSubmit}
-            returnKeyType="search"
-          />
-          {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.searchClearButton}>
-              <Text style={styles.searchClearText}>✕</Text>
-            </TouchableOpacity>
-          )}
+          <Text style={[styles.searchBar, { color: '#999', paddingTop: 14 }]}>
+             Search items by name, barcode...
+          </Text>
         </View>
-        {searchQuery.length > 0 && (
-          <TouchableOpacity onPress={handleSearch} style={styles.searchButton}>
-            <Text style={styles.searchButtonText}>Search</Text>
-          </TouchableOpacity>
-        )}
-      </View>
+      </TouchableOpacity>
 
       {/* Main scrollable content area containing Quick Actions, Recently Added, and Locations */}
       <ScrollView contentContainerStyle={styles.listContent}>
         {/* Quick Actions Grid */}
         <View style={styles.quickActionsSection}>
           <Text style={styles.sectionTitle}>Quick Actions</Text>
-          <View style={styles.quickActionsGrid}>
+          <ScrollView 
+            horizontal 
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.quickActionsGrid}
+          >
             {/* Shelf Analyzer */}
             <AnimatedButton
               onPress={handleShelfScan}
@@ -642,6 +683,18 @@ function HomeScreenContent() {
               </View>
               <Text style={styles.quickActionTitle} numberOfLines={2}>Shelf Analyzer</Text>
               <Text style={styles.quickActionSubtitle} numberOfLines={1}>Scan shelves</Text>
+            </AnimatedButton>
+
+            {/* Projects */}
+            <AnimatedButton
+              onPress={() => router.push('/screens/ProjectsListScreen')}
+              style={styles.quickActionCard}
+            >
+              <View style={styles.quickActionIconContainer}>
+                <ClipboardList color="#3B82F6" size={32} />
+              </View>
+              <Text style={styles.quickActionTitle} numberOfLines={2}>Projects</Text>
+              <Text style={styles.quickActionSubtitle} numberOfLines={1}>Manage tasks</Text>
             </AnimatedButton>
 
             {/* Shopping List */}
@@ -658,7 +711,7 @@ function HomeScreenContent() {
               <Text style={styles.quickActionTitle} numberOfLines={2}>Shopping List</Text>
               <Text style={styles.quickActionSubtitle} numberOfLines={1}>View list</Text>
             </AnimatedButton>
-          </View>
+          </ScrollView>
         </View>
 
         {/* Recently Added Items Section */}
@@ -684,7 +737,7 @@ function HomeScreenContent() {
                   <TouchableOpacity
                     style={styles.recentlyAddedItem}
                     onPress={() => {
-                      setSelectedLocationId(item.location_id);
+                      setSelectedLocationId(item.location_id || null);
                       setShowItemsList(true);
                     }}
                   >
@@ -1165,8 +1218,9 @@ function HomeScreenContent() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff', paddingTop: 60, paddingHorizontal: 20 },
-  header: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginBottom: 20 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
   title: { fontSize: 24, fontWeight: '700', color: '#000' },
+  headerSearchButton: { padding: 4 },
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1716,16 +1770,12 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   quickActionsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    gap: 12,
-    marginHorizontal: -16,
     paddingHorizontal: 16,
+    gap: 12,
   },
   quickActionCard: {
-    flex: 1,
-    minWidth: '45%',
+    width: 140, // Fixed width
+    height: 140, // Fixed height for square look
     backgroundColor: '#ffffff',
     borderRadius: 14,
     borderWidth: 2,

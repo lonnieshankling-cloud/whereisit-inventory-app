@@ -1,6 +1,6 @@
 import { logShoppingItemAdded, logShoppingItemPurchased } from '@/utils/analytics';
 import * as Haptics from 'expo-haptics';
-import { Check, Plus, RefreshCw, ShoppingCart, Trash2, X } from 'lucide-react-native';
+import { Check, Plus, RefreshCw, ShoppingCart, Trash2, X, ShoppingBag } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 import {
     ActivityIndicator,
@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import { LocalShoppingItem } from '../../services/databaseService';
 import { shoppingListService } from '../../services/shoppingListService';
+import { openStoreSearch } from '@/utils/affiliate';
 
 interface ShoppingListScreenProps {
   visible: boolean;
@@ -186,6 +187,12 @@ export default function ShoppingListScreen({ visible, onClose }: ShoppingListScr
           </Text>
           <Text style={styles.itemQuantity}>Qty: {item.quantity}</Text>
         </View>
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={styles.actionButton}
+        onPress={() => openStoreSearch(item.item_name)}
+      >
+        <ShoppingBag color="#2563EB" size={20} />
       </TouchableOpacity>
       <TouchableOpacity
         style={styles.deleteButton}
@@ -438,6 +445,10 @@ const styles = StyleSheet.create({
   },
   deleteButton: {
     padding: 8,
+  },
+  actionButton: {
+    padding: 8,
+    marginRight: 4,
   },
   emptyContainer: {
     alignItems: 'center',

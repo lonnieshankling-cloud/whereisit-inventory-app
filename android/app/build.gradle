@@ -105,10 +105,12 @@ android {
             keyPassword 'android'
         }
         release {
-            storeFile file('whereisit-upload-key.keystore')
-            storePassword System.getenv('WHEREISIT_STORE_PASSWORD') ?: 'TempPass123!'
-            keyAlias 'whereisit-key'
-            keyPassword System.getenv('WHEREISIT_KEY_PASSWORD') ?: 'TempPass123!'
+            if (project.hasProperty('MYAPP_UPLOAD_STORE_FILE')) {
+                storeFile file(MYAPP_UPLOAD_STORE_FILE)
+                storePassword MYAPP_UPLOAD_STORE_PASSWORD
+                keyAlias MYAPP_UPLOAD_KEY_ALIAS
+                keyPassword MYAPP_UPLOAD_KEY_PASSWORD
+            }
         }
     }
     buildTypes {
@@ -116,7 +118,8 @@ android {
             signingConfig signingConfigs.debug
         }
         release {
-            // Production signing with upload keystore
+            // Caution! In production, you need to generate your own keystore file.
+            // see https://reactnative.dev/docs/signed-apk-android.
             signingConfig signingConfigs.release
             def enableShrinkResources = findProperty('android.enableShrinkResourcesInReleaseBuilds') ?: 'false'
             shrinkResources enableShrinkResources.toBoolean()

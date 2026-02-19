@@ -22,14 +22,14 @@ interface HouseholdManagementScreenProps {
 interface HouseholdMember {
   id: string;
   email?: string;
-  created_at: string;
+  created_at: string | Date;
   is_owner: boolean;
 }
 
 interface PendingInvitation {
   id: number;
   email: string;
-  invited_at: string;
+  invited_at: string | Date;
   household_id: number;
   status: string;
   invitation_code?: string;
@@ -39,7 +39,7 @@ interface Household {
   id: number;
   name: string;
   owner_id: string | null;
-  created_at: string;
+  created_at: string | Date;
 }
 
 export default function HouseholdManagementScreen({ visible, onClose }: HouseholdManagementScreenProps) {

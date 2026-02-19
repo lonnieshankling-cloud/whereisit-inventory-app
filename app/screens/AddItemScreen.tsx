@@ -1,13 +1,16 @@
 import { logBarcodeScanned, logItemAdded, logPhotoTaken } from '@/utils/analytics';
-import { canAddItem, FREE_ITEM_LIMIT, getRemainingItems } from '@/utils/premium';
+import { canAddItem, ENTITLEMENT_ID, FREE_ITEM_LIMIT, getRemainingItems, refreshPremiumStatus } from '@/utils/premium';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import * as Haptics from 'expo-haptics';
-import { Barcode, Camera, Package, Plus, X } from 'lucide-react-native';
+import { Barcode, Calendar, Camera, Package, Plus, X } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 import {
     Alert,
     FlatList,
     Image,
+    KeyboardAvoidingView,
     Modal,
+    Platform,
     ScrollView,
     StyleSheet,
     Text,
@@ -15,9 +18,11 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
+import RevenueCatUI, { PAYWALL_RESULT } from 'react-native-purchases-ui';
 import { MobileBarcodeScannerModal } from '../../components/MobileBarcodeScannerModal';
 import { MobileCamera } from '../../components/MobileCamera';
 import { DetectedItem, MobileShelfAnalyzer } from '../../components/MobileShelfAnalyzer';
+import { itemApi } from '../../services/api';
 import { databaseService } from '../../services/databaseService';
 import PaywallScreen from './PaywallScreen';
 
@@ -37,6 +42,8 @@ export default function AddItemScreen({ onClose, onItemAdded, initialLocationId,
   const [minQuantity, setMinQuantity] = useState('');
   const [purchasePrice, setPurchasePrice] = useState('');
   const [purchaseStore, setPurchaseStore] = useState('');
+  const [warrantyDate, setWarrantyDate] = useState<Date | null>(null);
+  const [showWarrantyPicker, setShowWarrantyPicker] = useState(false);
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [receiptUri, setReceiptUri] = useState<string | null>(null);
   const [containerId, setContainerId] = useState<string | null>(initialContainerId || null);
@@ -154,6 +161,23 @@ export default function AddItemScreen({ onClose, onItemAdded, initialLocationId,
     } catch (error) {
       console.error('Error searching for existing items:', error);
     }
+
+    // Try to look up item details from backend
+    try {
+      const details = await itemApi.lookup(scannedBarcode);
+      if (details && details.name) {
+        setName(details.name);
+        if (details.description) setDescription(details.description);
+        // If we got an image URL and don't have one yet, use it
+        if (details.imageUrl && !imageUri) {
+             setImageUri(details.imageUrl);
+        }
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+    } catch (error) {
+      console.log('Barcode lookup failed:', error);
+      // Fail silently, just user has to enter data
+    }
   };
 
   const handleImageCaptured = async (uri: string) => {
@@ -169,7 +193,14 @@ export default function AddItemScreen({ onClose, onItemAdded, initialLocationId,
     setShowReceiptCamera(false);
     
     // Track photo taken
-    await logPhotoTaken('receipt');
+    await logPhotoTaken('camera');
+  };
+
+  const handleWarrantyDateChange = (event: any, selectedDate?: Date) => {
+    setShowWarrantyPicker(Platform.OS === 'ios');
+    if (selectedDate) {
+      setWarrantyDate(selectedDate);
+    }
   };
 
   const handleCreateContainer = async () => {
@@ -222,6 +253,7 @@ export default function AddItemScreen({ onClose, onItemAdded, initialLocationId,
     // Check premium status and item limit
     try {
       await databaseService.initialize();
+      await refreshPremiumStatus();
       const currentItems = await databaseService.getAllItems();
       const canAdd = await canAddItem(currentItems.length);
       
@@ -262,6 +294,7 @@ export default function AddItemScreen({ onClose, onItemAdded, initialLocationId,
         min_quantity: minQuantity ? parseInt(minQuantity) : undefined,
         purchase_price: purchasePrice ? parseFloat(purchasePrice) : undefined,
         purchase_store: purchaseStore.trim() || undefined,
+        warranty_date: warrantyDate ? warrantyDate.toISOString() : undefined,
         local_photo_uri: imageUri || undefined,
         photo_url: undefined,
         synced: 0,
@@ -314,8 +347,39 @@ export default function AddItemScreen({ onClose, onItemAdded, initialLocationId,
     }
   };
 
+  const handleAnalyzePress = async () => {
+    try {
+      const latestStatus = await refreshPremiumStatus();
+      if (latestStatus.active) {
+        setShowShelfAnalyzer(true);
+        return;
+      }
+
+      // Validate 'pro' entitlement (Must match the "Identifier" in your RevenueCat Entitlements)
+      const paywallResult = await RevenueCatUI.presentPaywallIfNeeded({
+        requiredEntitlementIdentifier: ENTITLEMENT_ID,
+      });
+
+      if (
+        paywallResult === PAYWALL_RESULT.NOT_PRESENTED ||
+        paywallResult === PAYWALL_RESULT.PURCHASED ||
+        paywallResult === PAYWALL_RESULT.RESTORED
+      ) {
+        setShowShelfAnalyzer(true);
+      } else {
+        console.log('Paywall declined or cancelled');
+      }
+    } catch (error) {
+      console.error('Paywall error:', error);
+    }
+  };
+
   return (
-    <View style={styles.container}>
+    <KeyboardAvoidingView 
+      style={styles.container} 
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+    >
       <View style={styles.header}>
         <TouchableOpacity onPress={onClose} style={styles.closeButton}>
           <X color="#111827" size={24} />
@@ -326,7 +390,7 @@ export default function AddItemScreen({ onClose, onItemAdded, initialLocationId,
 
 
 
-      <ScrollView style={styles.content}>
+      <ScrollView style={styles.content} keyboardShouldPersistTaps="handled">
         {/* Image Section */}
         <View style={styles.imageSection}>
           {imageUri ? (
@@ -349,7 +413,7 @@ export default function AddItemScreen({ onClose, onItemAdded, initialLocationId,
             </TouchableOpacity>
           )}
           <TouchableOpacity
-            onPress={() => setShowShelfAnalyzer(true)}
+            onPress={handleAnalyzePress}
             style={styles.analyzeButton}
           >
             <Text style={styles.analyzeButtonText}>Analyze photo (AI)</Text>
@@ -479,6 +543,48 @@ export default function AddItemScreen({ onClose, onItemAdded, initialLocationId,
             style={styles.input}
             placeholderTextColor="#9CA3AF"
           />
+        </View>
+
+        {/* Warranty Date */}
+        <View style={styles.field}>
+          <Text style={styles.label}>Warranty Expiry</Text>
+          <TouchableOpacity
+            style={styles.datePickerButton}
+            onPress={() => setShowWarrantyPicker(true)}
+          >
+            <Calendar color="#6B7280" size={20} />
+            <Text style={[styles.datePickerText, !warrantyDate && styles.containerPickerPlaceholder]}>
+              {warrantyDate ? warrantyDate.toLocaleDateString() : 'Select Expiry Date'}
+            </Text>
+          </TouchableOpacity>
+          
+          {showWarrantyPicker && (
+            <DateTimePicker
+              value={warrantyDate || new Date()}
+              mode="date"
+              display="default"
+              onChange={handleWarrantyDateChange}
+              minimumDate={new Date()}
+            />
+          )}
+
+           {warrantyDate && Platform.OS === 'ios' && showWarrantyPicker && (
+            <TouchableOpacity
+                style={styles.closeDatePickerButton}
+                onPress={() => setShowWarrantyPicker(false)}
+            >
+                <Text style={styles.closeDatePickerText}>Done</Text>
+            </TouchableOpacity>
+           )}
+
+           {warrantyDate && (
+             <TouchableOpacity
+               style={styles.clearContainerButton}
+               onPress={() => setWarrantyDate(null)}
+             >
+               <Text style={styles.clearContainerText}>Clear</Text>
+             </TouchableOpacity>
+           )}
         </View>
 
         {/* Location Selection */}
@@ -729,7 +835,7 @@ export default function AddItemScreen({ onClose, onItemAdded, initialLocationId,
         }}
         reason="item_limit"
       />
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -1004,6 +1110,34 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#111827',
     fontWeight: '500',
+  },
+  datePickerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: 'white',
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  datePickerText: {
+    fontSize: 16,
+    color: '#111827',
+  },
+  closeDatePickerButton: {
+    marginTop: 8,
+    alignSelf: 'flex-end',
+    backgroundColor: '#EFF6FF',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+  },
+  closeDatePickerText: {
+    fontSize: 14,
+    color: '#3B82F6',
+    fontWeight: '600',
   },
 });
 

@@ -12,8 +12,8 @@ if ($expoProcesses) {
 
 Start-Sleep -Seconds 2
 
-Write-Host "`nStarting Expo with cleared cache..." -ForegroundColor Yellow
+Write-Host "`nStarting Expo with cleared cache and tunnel..." -ForegroundColor Yellow
 Write-Host "This will load environment variables from .env.local" -ForegroundColor Cyan
 Write-Host ""
 
-npx expo start --clear
+npx expo start --tunnel --clear

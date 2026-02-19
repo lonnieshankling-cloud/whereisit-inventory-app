@@ -1,140 +1,281 @@
-import { useAuth, useSignIn } from '@clerk/clerk-expo';
-import { useRouter } from 'expo-router';
-import { useState } from 'react';
-import { Alert, SafeAreaView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { setAuthToken } from '../services/api';
+import { useOAuth, useSignIn, useSignUp } from '@clerk/clerk-expo';
+import * as WebBrowser from 'expo-web-browser';
+import React, { useCallback } from 'react';
+import { Image, KeyboardAvoidingView, Platform, SafeAreaView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Colors } from '../constants/theme';
+import { useWarmUpBrowser } from '../hooks/useWarmUpBrowser';
+
+const Logo = require('../assets/images/icon.png');
+
+WebBrowser.maybeCompleteAuthSession();
 
 export default function SignInScreen() {
-  const router = useRouter();
-  const { signIn, setActive, isLoaded } = useSignIn();
-  const { getToken } = useAuth();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [code, setCode] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [needsMFA, setNeedsMFA] = useState(false);
+  useWarmUpBrowser();
+  const { signIn, setActive: setActiveSignIn, isLoaded: isSignInLoaded } = useSignIn();
+  const { signUp, setActive: setActiveSignUp, isLoaded: isSignUpLoaded } = useSignUp();
+  
+  // Initialize OAuth flows
+  const { startOAuthFlow: startGoogleAuth } = useOAuth({ strategy: "oauth_google" });
+  const { startOAuthFlow: startAppleAuth } = useOAuth({ strategy: "oauth_apple" });
+  
+  // Note: We don't need manual navigation because app/_layout.tsx listens to authentication state changes
+  // and redirects automatically when 'isSignedIn' becomes true.
+  
+  const [mode, setMode] = React.useState<'signin' | 'signup'>('signin');
+  const [emailAddress, setEmailAddress] = React.useState('');
+  const [password, setPassword] = React.useState('');
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState('');
+  const [pendingVerification, setPendingVerification] = React.useState(false);
+  const [code, setCode] = React.useState('');
 
-  const handleSignIn = async () => {
+  const isLoaded = isSignInLoaded && isSignUpLoaded;
+
+  const onSignInPress = async () => {
     if (!isLoaded) return;
-    if (!signIn) {
-      Alert.alert('Not ready', 'Sign-in is still initializing. Please try again.');
-      return;
-    }
-    if (!email.trim() || !password) {
-      Alert.alert('Missing info', 'Enter email and password');
-      return;
-    }
+    setLoading(true);
+    setError('');
     try {
-      setLoading(true);
-      const result = await signIn.create({ identifier: email.trim(), password });
-      if (result.status === 'complete') {
-        await setActive({ session: result.createdSessionId });
-        const token = await getToken();
-        if (token) {
-          await setAuthToken(`Bearer ${token}`);
-        }
-        Alert.alert('Signed in', 'You are signed in.');
-        router.replace('/');
-      } else if (result.status === 'needs_second_factor') {
-        setNeedsMFA(true);
-        Alert.alert('Two-Factor Authentication', 'Check your email for a verification code.');
-      } else {
-        Alert.alert('Sign-in incomplete', result.status ?? 'unknown status');
-      }
+      const completeSignIn = await signIn.create({
+        identifier: emailAddress,
+        password,
+      });
+      console.log('Sign in successful', completeSignIn.status);
+      await setActiveSignIn({ session: completeSignIn.createdSessionId });
+      // No router.replace('/') here! Layout handles it.
     } catch (err: any) {
-      console.error('Sign-in error', err);
-      Alert.alert('Sign-in failed', err?.errors?.[0]?.message || err?.message || 'Please try again');
+      console.error(JSON.stringify(err, null, 2));
+      setError(err.errors?.[0]?.message || 'Failed to sign in');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleVerifyMFA = async () => {
-    if (!signIn) {
-      Alert.alert('Not ready', 'Sign-in is still initializing. Please try again.');
-      return;
-    }
-    if (!code.trim()) {
-      Alert.alert('Missing code', 'Enter the verification code');
-      return;
-    }
+  const onSignUpPress = async () => {
+    if (!isLoaded) return;
+    setLoading(true);
+    setError('');
     try {
-      setLoading(true);
-      const result = await signIn.attemptSecondFactor({ strategy: 'email_code', code });
-      console.log('MFA attempt result:', result.status);
-      if (result.status === 'complete') {
-        console.log('Setting active session:', result.createdSessionId);
-        await setActive({ session: result.createdSessionId });
-        
-        // Wait a moment for the session to be active
-        await new Promise(resolve => setTimeout(resolve, 500));
-        
-        const token = await getToken();
-        console.log('Token after MFA:', token ? 'present' : 'missing');
-        if (token) {
-          const bearerToken = `Bearer ${token}`;
-          console.log('Storing bearer token:', bearerToken.substring(0, 30) + '...');
-          await setAuthToken(bearerToken);
-        } else {
-          console.warn('No token returned from getToken()');
-        }
-        Alert.alert('Signed in', 'You are signed in.');
-        router.replace('/');
-      } else {
-        Alert.alert('Verification failed', result.status ?? 'unknown status');
-      }
+      await signUp.create({
+        emailAddress,
+        password,
+      });
+
+      // Send email verification code
+      await signUp.prepareEmailAddressVerification({ strategy: 'email_code' });
+      
+      setPendingVerification(true);
     } catch (err: any) {
-      console.error('MFA error', err);
-      Alert.alert('Verification failed', err?.errors?.[0]?.message || err?.message || 'Please try again');
+      console.error(JSON.stringify(err, null, 2));
+      setError(err.errors?.[0]?.message || 'Failed to sign up');
     } finally {
       setLoading(false);
     }
   };
+
+  const onVerifyPress = async () => {
+    if (!isLoaded) return;
+    setLoading(true);
+    setError('');
+    try {
+      const completeSignUp = await signUp.attemptEmailAddressVerification({
+        code,
+      });
+
+      if (completeSignUp.status === 'complete') {
+        await setActiveSignUp({ session: completeSignUp.createdSessionId });
+        // Layout handles redirect
+      } else {
+        console.log('Verification incomplete', completeSignUp);
+        setError('Verification failed. Please try again.');
+      }
+    } catch (err: any) {
+      console.error(JSON.stringify(err, null, 2));
+      setError(err.errors?.[0]?.message || 'Invalid code');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onSocialSignIn = useCallback(async (strategy: 'google' | 'apple') => {
+    try {
+      setLoading(true);
+      setError('');
+      const startFlow = strategy === 'google' ? startGoogleAuth : startAppleAuth;
+      
+      const { createdSessionId, setActive: setSocialActive, signUp, signIn } = await startFlow();
+      
+      if (createdSessionId) {
+        if (setSocialActive) {
+           await setSocialActive({ session: createdSessionId });
+        }
+        // Layout handles redirect
+      } else {
+        // If no createdSessionId, it means further steps are needed (e.g. MFA)
+        // or the user cancelled.
+        console.log('Social auth incomplete', { createdSessionId, signIn, signUp });
+      }
+    } catch (err: any) {
+      console.error("OAuth error", err);
+      // Don't show error if user cancelled (common in OAuth flow)
+      // Check for specific error codes if possible, otherwise generic message
+      if ((err as any)?.code !== 'session_exists') {
+          setError('Social authentication failed or cancelled.');
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [startGoogleAuth, startAppleAuth]);
+
+  // Show verification screen if pending
+  if (pendingVerification) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <KeyboardAvoidingView 
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.keyboardView}
+        >
+          <View style={styles.logoContainer}>
+            <Image source={Logo} style={styles.logo} resizeMode="contain" />
+            <Text style={styles.appName}>Verify Your Email</Text>
+            <Text style={styles.tagline}>Enter the code sent to {emailAddress}</Text>
+          </View>
+
+          <View style={styles.formContainer}>
+            {error ? <Text style={styles.errorText}>{error}</Text> : null}
+
+            <View style={styles.inputContainer}>
+              <TextInput
+                value={code}
+                placeholder="Verification Code"
+                placeholderTextColor="#666"
+                onChangeText={setCode}
+                style={styles.input}
+                keyboardType="number-pad"
+                autoFocus
+              />
+            </View>
+
+            <TouchableOpacity 
+              style={[styles.button, loading && styles.buttonDisabled]} 
+              onPress={onVerifyPress}
+              disabled={loading}
+            >
+              <Text style={styles.buttonText}>
+                {loading ? 'Verifying...' : 'Verify Email'}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={styles.backButton}
+              onPress={() => {
+                setPendingVerification(false);
+                setCode('');
+                setError('');
+              }}
+            >
+              <Text style={styles.linkText}>← Back to sign up</Text>
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.card}>
-        <Text style={styles.title}>{needsMFA ? 'Verify Code' : 'Sign in'}</Text>
-        {!needsMFA ? (
-          <>
+      <KeyboardAvoidingView 
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.keyboardView}
+      >
+        <View style={styles.logoContainer}>
+          <Image source={Logo} style={styles.logo} resizeMode="contain" />
+          <Text style={styles.appName}>WhereIsIt?</Text>
+          <Text style={styles.tagline}>Find your stuff, fast.</Text>
+        </View>
+
+        <View style={styles.formContainer}>
+          <Text style={styles.welcomeText}>
+            {mode === 'signin' ? 'Welcome Back' : 'Create Account'}
+          </Text>
+          
+          {error ? <Text style={styles.errorText}>{error}</Text> : null}
+
+          {/* Social Logins */}
+          <View style={styles.socialContainer}>
+            <TouchableOpacity 
+                style={[styles.socialButton, styles.googleButton]} 
+                onPress={() => onSocialSignIn('google')}
+                disabled={loading}
+            >
+                {/* Simple Text Fallback */}
+                <Text style={styles.socialButtonTextInternal}>Continue with Google</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+                style={[styles.socialButton, styles.appleButton]} 
+                onPress={() => onSocialSignIn('apple')}
+                disabled={loading}
+            >
+                <Text style={[styles.socialButtonTextInternal, styles.appleButtonText]}>Continue with Apple</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.divider}>
+             <View style={styles.dividerLine} />
+             <Text style={styles.dividerText}>OR</Text>
+             <View style={styles.dividerLine} />
+          </View>
+
+          <View style={styles.inputContainer}>
             <TextInput
-              value={email}
-              onChangeText={setEmail}
-              placeholder="Email"
               autoCapitalize="none"
-              keyboardType="email-address"
+              value={emailAddress}
+              placeholder="Email..."
+              placeholderTextColor="#666"
+              onChangeText={(emailAddress) => setEmailAddress(emailAddress)}
               style={styles.input}
             />
+          </View>
+
+          <View style={styles.inputContainer}>
             <TextInput
               value={password}
-              onChangeText={setPassword}
-              placeholder="Password"
-              secureTextEntry
+              placeholder="Password..."
+              placeholderTextColor="#666"
+              secureTextEntry={true}
+              onChangeText={(password) => setPassword(password)}
               style={styles.input}
             />
-            <TouchableOpacity style={styles.button} onPress={handleSignIn} disabled={loading}>
-              <Text style={styles.buttonText}>{loading ? 'Signing in...' : 'Sign in'}</Text>
+          </View>
+
+          <TouchableOpacity 
+            style={[styles.button, loading && styles.buttonDisabled]} 
+            onPress={mode === 'signin' ? onSignInPress : onSignUpPress}
+            disabled={loading}
+          >
+            <Text style={styles.buttonText}>
+              {loading 
+                ? (mode === 'signin' ? 'Signing In...' : 'Creating Account...') 
+                : (mode === 'signin' ? 'Sign In' : 'Sign Up')}
+            </Text>
+          </TouchableOpacity>
+
+          <View style={styles.footer}>
+            <Text style={styles.footerText}>
+              {mode === 'signin' ? "Don't have an account?" : "Already have an account?"}
+            </Text>
+            <TouchableOpacity onPress={() => {
+              setMode(mode === 'signin' ? 'signup' : 'signin');
+              setError('');
+            }}>
+              <Text style={styles.linkText}>
+                {mode === 'signin' ? 'Sign up' : 'Sign in'}
+              </Text>
             </TouchableOpacity>
-          </>
-        ) : (
-          <>
-            <Text style={styles.hint}>Enter the verification code sent to your email</Text>
-            <TextInput
-              value={code}
-              onChangeText={setCode}
-              placeholder="Verification code"
-              keyboardType="number-pad"
-              style={styles.input}
-            />
-            <TouchableOpacity style={styles.button} onPress={handleVerifyMFA} disabled={loading}>
-              <Text style={styles.buttonText}>{loading ? 'Verifying...' : 'Verify'}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => setNeedsMFA(false)}>
-              <Text style={styles.backText}>← Back to sign in</Text>
-            </TouchableOpacity>
-          </>
-        )}
-      </View>
+          </View>
+        </View>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -142,52 +283,147 @@ export default function SignInScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#fff',
+  },
+  keyboardView: {
+    flex: 1,
     justifyContent: 'center',
-    padding: 24,
-    backgroundColor: '#f7f7f7',
-  },
-  card: {
-    backgroundColor: 'white',
     padding: 20,
-    borderRadius: 12,
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 4,
   },
-  title: {
-    fontSize: 20,
-    fontWeight: '600',
-    marginBottom: 16,
+  logoContainer: {
+    alignItems: 'center',
+    marginBottom: 30, 
   },
-  hint: {
-    fontSize: 14,
+  logo: {
+    width: 90,
+    height: 90,
+    marginBottom: 10,
+  },
+  appName: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  tagline: {
+    fontSize: 16,
     color: '#666',
-    marginBottom: 12,
+    marginTop: 5,
+  },
+  formContainer: {
+    width: '100%',
+  },
+  welcomeText: {
+    fontSize: 24,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  errorText: {
+    color: 'red',
+    marginBottom: 10,
+    textAlign: 'center',
+  },
+  inputContainer: {
+    marginBottom: 15,
   },
   input: {
+    backgroundColor: '#f5f5f5',
+    paddingHorizontal: 15,
+    paddingVertical: 12,
+    borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 10,
-    padding: 12,
-    marginBottom: 12,
-    backgroundColor: 'white',
+    borderColor: '#e0e0e0',
+    fontSize: 16,
+    color: '#333',
   },
   button: {
-    backgroundColor: '#111827',
-    borderRadius: 10,
-    paddingVertical: 12,
+    backgroundColor: Colors.light.tint, 
+    paddingVertical: 14,
+    borderRadius: 8,
     alignItems: 'center',
+    marginTop: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 3,
+  },
+  buttonDisabled: {
+    opacity: 0.7,
   },
   buttonText: {
-    color: 'white',
-    fontWeight: '600',
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
-  backText: {
-    color: '#3B82F6',
-    textAlign: 'center',
-    marginTop: 12,
+  footer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    marginTop: 20,
+    gap: 5,
+  },
+  footerText: {
+    color: '#666',
+    fontSize: 14,
+  },
+  linkText: {
+    color: Colors.light.tint,
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  // Social Styles
+  socialContainer: {
+    gap: 12,
+    marginBottom: 20,
+  },
+  socialButton: {
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    backgroundColor: '#fff',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  googleButton: {
+    backgroundColor: '#fff',
+  },
+  appleButton: {
+    backgroundColor: '#000',
+    borderColor: '#000',
+  },
+  socialButtonTextInternal: {
+    fontSize: 16,
     fontWeight: '500',
+    color: '#333',
+  },
+  appleButtonText: {
+    color: '#fff',
+  },
+  divider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#e0e0e0',
+  },
+  dividerText: {
+    marginHorizontal: 10,
+    color: '#999',
+    fontSize: 14,
+  },
+  backButton: {
+    marginTop: 20,
+    alignItems: 'center',
   },
 });

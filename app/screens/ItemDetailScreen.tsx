@@ -1,7 +1,8 @@
 import * as Haptics from 'expo-haptics';
-import { Barcode, Calendar, DollarSign, Edit2, FileText, Package, Plus, Save, ShoppingBag, ShoppingCart, Trash2, X } from 'lucide-react-native';
+import { Barcode, Calendar, DollarSign, Edit2, FileText, Package, Plus, Save, ShoppingBag, ShoppingCart, Sparkles, Trash2, X } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 import {
+    ActivityIndicator,
     Alert,
     FlatList,
     Image,
@@ -17,6 +18,7 @@ import { MobileBarcodeScannerModal } from '../../components/MobileBarcodeScanner
 import { MobileCamera } from '../../components/MobileCamera';
 import { databaseService, LocalContainer, LocalItem } from '../../services/databaseService';
 import { shoppingListService } from '../../services/shoppingListService';
+import { generateItemDescription } from '../../utils/gemini';
 
 interface ItemDetailScreenProps {
   item: LocalItem;
@@ -34,6 +36,7 @@ export default function ItemDetailScreen({
   onItemDeleted,
 }: ItemDetailScreenProps) {
   const [isEditing, setIsEditing] = useState(false);
+  const [isGeneratingDesc, setIsGeneratingDesc] = useState(false);
   const [name, setName] = useState(item.name);
   const [description, setDescription] = useState(item.description || '');
   const [category, setCategory] = useState(item.category || '');
@@ -195,6 +198,25 @@ export default function ItemDetailScreen({
     }
   };
 
+  const handleGenerateDescription = async () => {
+    if (!name) {
+      Alert.alert('Error', 'Please enter an item name first');
+      return;
+    }
+
+    setIsGeneratingDesc(true);
+    try {
+      const desc = await generateItemDescription(name);
+      setDescription(desc);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (error) {
+      console.error('Failed to generate description:', error);
+      Alert.alert('Error', 'Failed to generate description');
+    } finally {
+      setIsGeneratingDesc(false);
+    }
+  };
+
   const handleSave = async () => {
     if (!name.trim()) {
       Alert.alert('Error', 'Please enter an item name');
@@ -338,7 +360,23 @@ export default function ItemDetailScreen({
               </View>
 
               <View style={styles.field}>
-                <Text style={styles.label}>Description</Text>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <Text style={[styles.label, { marginBottom: 0 }]}>Description</Text>
+                  <TouchableOpacity 
+                    onPress={handleGenerateDescription}
+                    disabled={isGeneratingDesc}
+                    style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#F3F4F6', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12 }}
+                  >
+                    {isGeneratingDesc ? (
+                      <ActivityIndicator size="small" color="#6366F1" />
+                    ) : (
+                      <>
+                        <Sparkles size={14} color="#6366F1" style={{ marginRight: 4 }} />
+                        <Text style={{ fontSize: 12, color: '#6366F1', fontWeight: '500' }}>Auto-generate</Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                </View>
                 <TextInput
                   value={description}
                   onChangeText={setDescription}

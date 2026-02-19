@@ -1,5 +1,19 @@
 # Google Play Store Listing - WhereIsIt Inventory
 
+## Package Name (Application ID)
+
+**IMPORTANT:** `com.whereisit.inventory`
+
+> ⚠️ **Note:** When Google Play Console asks for "Package name" or "Application ID", enter **ONLY** `com.whereisit.inventory` (not a full URL).
+> 
+> This package name is defined in:
+> - `app.json` (line 21): `"package": "com.whereisit.inventory"`
+> - `android/app/build.gradle` (line 92): `applicationId 'com.whereisit.inventory'`
+>
+> For more details, see [GOOGLE_PLAY_PACKAGE_NAME.md](./GOOGLE_PLAY_PACKAGE_NAME.md)
+
+---
+
 ## App Name
 **WhereIsIt Inventory** (30 characters max: 21/30)
 
@@ -114,6 +128,7 @@ Start organizing your home today with WhereIsIt Inventory!
 
 **Support:** support@whereisit-inventory.com
 **Privacy Policy:** https://lonnieshankling-cloud.github.io/whereisit-inventory-app/PRIVACY_POLICY
+**Terms of Service:** https://lonnieshankling-cloud.github.io/whereisit-inventory-app/TERMS_OF_SERVICE
 **Source Code:** https://github.com/lonnieshankling-cloud/whereisit-inventory-app
 
 *(2679 characters - plenty of room to add more)*
@@ -161,6 +176,7 @@ inventory, organization, storage, home, household, tracking, items, belongings, 
 **Email:** support@whereisit-inventory.com
 **Website:** https://github.com/lonnieshankling-cloud/whereisit-inventory-app
 **Privacy Policy URL:** https://lonnieshankling-cloud.github.io/whereisit-inventory-app/PRIVACY_POLICY
+**Terms of Service URL:** https://lonnieshankling-cloud.github.io/whereisit-inventory-app/TERMS_OF_SERVICE
 
 ---
 
@@ -281,6 +297,7 @@ Consider translating to:
 
 ## Checklist Before Submission
 
+- [ ] **Package name verified:** `com.whereisit.inventory` (NOT a URL)
 - [ ] App name decided and available
 - [ ] Short description (under 80 chars)
 - [ ] Full description (compelling and informative)
@@ -288,6 +305,7 @@ Consider translating to:
 - [ ] Feature graphic (1024x500) created
 - [ ] App icon (512x512) ready
 - [ ] Privacy policy URL active and accessible
+- [ ] Terms of service URL active and accessible
 - [ ] Contact email set up
 - [ ] Content rating questionnaire completed
 - [ ] AAB/APK file built and tested

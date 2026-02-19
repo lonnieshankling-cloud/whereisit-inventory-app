@@ -1,27 +1,53 @@
-# Copilot Instructions for whereisit-inventory-app
+# Agent Instructions: whereisit-inventory-app
 
-## Architecture snapshot
-- Mobile app in `app/` uses Expo + expo-router (file-based routes); Clerk auth wired in `app/_layout.tsx`, syncing Clerk tokens to SecureStore/AsyncStorage and API auth via `services/api.ts`.
-- Offline-first data for shopping lists: `services/databaseService` (SQLite) + `services/shoppingListService.ts` (write locally, sync when online, last-write-wins from server).
-- API access should flow through `services/api.ts` (`getApiClient`, `householdApi`, etc.) which injects bearer tokens and resolves base URL (falls back to Encore cloud env when mobile is on-device).
-- Encore TypeScript backend in `backend/` (auth/household/item/location/shopping/storage/...); run with `encore run`. Generated client lives in `frontend/client.ts` and is consumed by the mobile app—regenerate with `encore gen client --target leap` after backend shape changes.
-- Web admin/dashboard lives in `frontend/` (Vite + Clerk + Radix + Tailwind). Backend build script bundles this into `backend/frontend/dist`.
+## 🏗 Project Architecture
+- **Monorepo Structure**:
+  - `app/`: React Native (Expo) mobile application using file-based routing.
+  - `backend/`: Encore.dev TypeScript backend services.
+  - `frontend/`: Vite + React web admin dashboard.
+  - `services/`: Shared mobile services (API, DB, Sync).
+- **Core Stacks**: Expo Router, Clerk (Auth), SQLite (Local DB), Encore (Backend), Gemini/Google Vision (AI).
 
-## Environment & secrets
-- Copy `.env.example` to `.env.local`; set `EXPO_PUBLIC_GEMINI_API_KEY`, `EXPO_PUBLIC_BACKEND_URL` (avoid localhost on physical devices), and `EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY`.
-- Backend expects Gemini/Google Vision creds (see `backend/google-vision-key.json` placeholder) and matching secret for GeminiApiKey. Auth token stored under `@whereisit_auth_token` via SecureStore/AsyncStorage.
+## 🔄 Data Flow & State
+- **Authentication**:
+  - Clerk handles identity in `app/_layout.tsx`.
+  - Token is synced to `AsyncStorage` (`@whereisit_auth_token`) via `setAuthToken` in `services/api.ts`.
+  - **Critical**: Always use `getApiClient()` in `services/api.ts` for backend calls; it auto-injects the token and handles environment resolution (Local vs Cloud).
+- **Offline-First (Mobile)**:
+  - Pattern defined in `services/shoppingListService.ts`.
+  - Reads/Writes always go to SQLite (`services/databaseService.ts`) first.
+  - Background sync pushes changes when online (`last-write-wins` strategy).
+- **Backend Communication**:
+  - Uses Encore-generated client at `frontend/client.ts`.
+  - Mobile app imports this client directly.
 
-## Day-to-day workflows
-- Install deps with `bun install` at repo root (workspace). Expo can also work with `npm install` if bun unavailable.
-- Mobile dev: `npx expo start` (helpers: `start-expo.bat`, `restart-expo.ps1` on Windows). Platform builds: `npm run android` / `npm run ios`.
-- Backend dev: `cd backend && bun install && encore run` (requires Encore CLI). Regenerate API client after service changes: `encore gen client --target leap`.
-- Web frontend: `cd frontend && bun install && npx vite dev`.
-- Tests: `cd backend && bun run test`; `cd frontend && bun run test`.
+## 🛠 Developer Workflows & Commands
+- **Dependency Management**:
+  - Root: `npm install` (Standard for Expo workspace).
+  - Backend/Frontend: `bun install` (Preferred for speed/compatibility with Encore scripts).
+- **Running the Stack**:
+  - Mobile: `npx expo start` (or `start-expo.bat`).
+  - Backend: `cd backend && encore run`.
+  - Web: `cd frontend && npx vite dev`.
+- **Code Generation**:
+  - After changing backend schema: `cd backend && encore gen client --target leap` to update `frontend/client.ts`.
+- **Testing**:
+  - Backend/Frontend: `vitest`.
+  - Mobile: Manual testing via Expo Go or Simulators.
 
-## Patterns & guardrails
-- Always use the generated client via `getApiClient()`; add new endpoint helpers in `services/api.ts` to keep auth/base URL logic centralized.
-- After Clerk sign-in, call `setAuthToken` with the bearer from `useAuth().getToken`; clear with `clearAuthToken` on sign-out to keep API client state consistent.
-- For offline flows, follow `ShoppingListService`—update SQLite first, sync when online, and expose sync state through listeners for UI indicators.
-- Routing: modal routes and stacks are defined in `app/_layout.tsx`; place new screens under `app/` following expo-router conventions.
-- Media/AI: shelf analysis uses Gemini key; image processing via Expo Image Manipulator; barcode scanning components live under `components/BarCodeScanner*` and `components/MobileCamera.tsx`.
-- Deployment/release references: `PLAY_STORE_LISTING.md` for store prep, `CONTAINER_REGISTRY_SETUP.md` for container builds, `DEVELOPMENT.md` for backend + sync overview, analytics/billing setup in corresponding `*_SETUP.md` guides.
+## 🧩 Key Patterns & Conventions
+- **Routing**: Define screens in `app/`. Configure modal stacks/tabs in `app/_layout.tsx`.
+- **API Extension**: Do not use `fetch` directly. Add helper methods in `services/api.ts` wrapping the generated client for consistent error handling and auth.
+- **AI Integration**:
+  - Shelf Analysis: Uses Gemini (Key in `.env`, implementation in `components/MobileShelfAnalyzer.tsx`).
+- **Environment**:
+  - Copy `.env.example` to `.env.local`.
+  - Set `EXPO_PUBLIC_BACKEND_URL` to your Encore endpoint (avoid `localhost` on physical devices).
+  - Backend requires `google-vision-key.json` for Vision API features.
+
+## 📂 Important Files
+- `app/_layout.tsx`: Auth state listener, token syncing, and Navigation root.
+- `services/api.ts`: API Client factory, Auth token management, & Environment resolution.
+- `services/databaseService.ts`: SQLite schema definitions & query logic.
+- `backend/encore.app`: Backend service definition.
+- `frontend/client.ts`: Generated type-safe API client (shared).

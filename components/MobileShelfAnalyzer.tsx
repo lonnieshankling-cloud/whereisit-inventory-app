@@ -2,7 +2,7 @@ import { useAuth } from '@clerk/clerk-expo';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
-import { Camera, Check, ChevronDown, Crop, Edit2, Images, Loader, MapPin, Package, Plus, Trash2, X } from 'lucide-react-native';
+import { Camera, Check, ChevronDown, Edit2, Images, Loader, MapPin, Package, Plus, Trash2, X } from 'lucide-react-native';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
     Alert,
@@ -15,6 +15,7 @@ import {
     TouchableOpacity,
     View
 } from 'react-native';
+import PaywallScreen from '../app/screens/PaywallScreen';
 import { Config } from '../config';
 import { databaseService } from '../services/databaseService';
 import { compressForBarcode, compressForDisplay } from '../services/imageCompression';
@@ -23,8 +24,9 @@ import {
     createThumbnail,
     cropImageFromBoundingBox
 } from '../services/imageViewerService';
+import { Analytics, logEvent } from '../utils/analytics';
+import { canAccessFeature } from '../utils/premium';
 import { AnimatedButton } from './AnimatedButton';
-import { ImageCropModal } from './ImageCropModal';
 import { ImageViewerModal } from './ImageViewerModal';
 import { MobileBarcodeScannerModal } from './MobileBarcodeScannerModal';
 
@@ -64,14 +66,12 @@ export function MobileShelfAnalyzer({ visible, onClose, onItemsDetected }: Mobil
   const [showReview, setShowReview] = useState(false);
   const [containers, setContainers] = useState<Array<{ id: string; name: string; location_id?: string | null }>>([]);
   const [locations, setLocations] = useState<Array<{ id: string; name: string }>>([]);
-  const [croppingItemIndex, setCroppingItemIndex] = useState<number | null>(null);
-  const [showCropModal, setShowCropModal] = useState(false);
-  const [cropSourceUri, setCropSourceUri] = useState<string | null>(null);
   const cameraRef = useRef<CameraView>(null);
   const [permissionRequested, setPermissionRequested] = useState(false);
   const [showReceiptPrompt, setShowReceiptPrompt] = useState(false);
   const [showReceiptCamera, setShowReceiptCamera] = useState(false);
   const [receiptPhotoUri, setReceiptPhotoUri] = useState<string | null>(null);
+  const [showPaywall, setShowPaywall] = useState(false);
   const [pendingItemsForReceipt, setPendingItemsForReceipt] = useState<DetectedItem[]>([]);
   const [scanMode, setScanMode] = useState<'barcode' | 'shelf'>('shelf'); // Default to SHELF scanning
   const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
@@ -124,12 +124,14 @@ export function MobileShelfAnalyzer({ visible, onClose, onItemsDetected }: Mobil
       
       console.log('📸 Photo captured:', photo?.uri);
       if (photo?.uri) {
-        // Compress the image before analysis
         const compressedUri = scanMode === 'barcode'
           ? await compressForBarcode(photo.uri)
           : await compressForDisplay(photo.uri);
         console.log('📸 Photo compressed:', compressedUri);
         setCapturedPhoto(compressedUri);
+        setDetectedItems([]);
+        setShowReview(false);
+        setAnalysisStep('');
       }
     } catch (error) {
       console.error('Error capturing photo:', error);
@@ -159,7 +161,7 @@ export function MobileShelfAnalyzer({ visible, onClose, onItemsDetected }: Mobil
 
       const result = await launchImageLibraryAsync({
         mediaTypes: ['images'],
-        allowsEditing: true,
+        allowsEditing: false,
         quality: 1.0,
       });
 
@@ -185,7 +187,8 @@ export function MobileShelfAnalyzer({ visible, onClose, onItemsDetected }: Mobil
       // Inject auth token for protected endpoint
       const { getAuthToken, getBaseURL } = await import('../services/api');
       const token = await getAuthToken();
-      const authHeader = token ? { Authorization: `Bearer ${token}` } : {};
+      // Token stored in AsyncStorage already includes 'Bearer ' prefix (see app/_layout.tsx)
+      const authHeader = token ? { Authorization: token } : {};
       if (!token) {
         console.warn('[Upload] No auth token found. Ensure you are signed in.');
       }
@@ -209,7 +212,11 @@ export function MobileShelfAnalyzer({ visible, onClose, onItemsDetected }: Mobil
         }),
       });
 
-      if (!response.ok) throw new Error(`Upload failed: ${response.statusText}`);
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`[Upload] Failed with status ${response.status}: ${errorText}`);
+        throw new Error(`Upload failed: ${response.status} ${response.statusText || 'Unknown Error'} - ${errorText}`);
+      }
       const data = await response.json();
       return data.url;
     } catch (error) {
@@ -247,11 +254,12 @@ export function MobileShelfAnalyzer({ visible, onClose, onItemsDetected }: Mobil
       const GEMINI_API_KEY = Config.GEMINI_API_KEY;
       if (!GEMINI_API_KEY) {
         console.warn('Gemini API key not found, skipping enhancement');
+        Alert.alert('Configuration Error', 'Gemini API key is missing. Check your .env.local file.');
         return ocrItems;
       }
 
       const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-      const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
+      const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
       const ocrContext = ocrItems.length > 0 
         ? `\n\nOCR detected these items: ${ocrItems.map((item: DetectedItem) => 
@@ -464,6 +472,16 @@ export function MobileShelfAnalyzer({ visible, onClose, onItemsDetected }: Mobil
   const handleAnalyze = async () => {
     if (!capturedPhoto) return;
 
+    // Check quota for free users
+    const hasPremium = await canAccessFeature('ai_assistant');
+    if (!hasPremium) {
+       const stats = await Analytics.getStats('month');
+       if (stats.aiScansThisMonth >= 5) {
+          setShowPaywall(true);
+          return;
+       }
+    }
+
     setIsAnalyzing(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
@@ -673,6 +691,9 @@ export function MobileShelfAnalyzer({ visible, onClose, onItemsDetected }: Mobil
           return;
         }
 
+        // Log scan usage (counts against quota)
+        await logEvent('ai_scan_performed');
+
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         setDetectedItems(geminiItems);
         setShowReview(true);
@@ -699,6 +720,9 @@ export function MobileShelfAnalyzer({ visible, onClose, onItemsDetected }: Mobil
 
       console.log('Final enhanced items:', finalItems.length);
       
+      // Log scan usage (counts against quota)
+      await logEvent('ai_scan_performed');
+
       // Attach the photo URI to all detected items
       const itemsWithPhoto = finalItems.map(item => ({
         ...item,
@@ -761,107 +785,6 @@ export function MobileShelfAnalyzer({ visible, onClose, onItemsDetected }: Mobil
     setDetectedItems(prev => prev.filter((_, i) => i !== index));
   }, []);
 
-  const handleCropPhoto = async (itemIndex: number) => {
-    if (!capturedPhoto) return;
-    
-    try {
-      setCroppingItemIndex(itemIndex);
-      
-      // Check if the item already has a cropped photo, otherwise use the original
-      const sourceUri = detectedItems[itemIndex].photoUri || capturedPhoto;
-      
-      Alert.alert(
-        'Edit Photo',
-        'Choose an option:',
-        [
-          {
-            text: 'Crop from Shelf',
-            onPress: async () => {
-              try {
-                // Use custom crop modal with proper scaling
-                setCropSourceUri(capturedPhoto);
-                setShowCropModal(true);
-              } catch (error) {
-                console.error('Error opening crop modal:', error);
-                Alert.alert('Error', 'Failed to open crop modal');
-                setCroppingItemIndex(null);
-              }
-            },
-          },
-          {
-            text: 'Select from Gallery',
-            onPress: async () => {
-              try {
-                const { launchImageLibraryAsync, requestMediaLibraryPermissionsAsync } = await import('expo-image-picker');
-                
-                // Request permission first
-                const { status } = await requestMediaLibraryPermissionsAsync();
-                if (status !== 'granted') {
-                  Alert.alert('Permission Required', 'Please grant media library access to select photos.');
-                  setCroppingItemIndex(null);
-                  return;
-                }
-                
-                const result = await launchImageLibraryAsync({
-                  mediaTypes: ['images'],
-                  allowsEditing: true,
-                  quality: 0.8,
-                  aspect: [1, 1],
-                });
-                
-                if (!result.canceled && result.assets[0]) {
-                  const compressedUri = await compressForDisplay(result.assets[0].uri);
-                  const updatedItems = [...detectedItems];
-                  updatedItems[itemIndex] = {
-                    ...updatedItems[itemIndex],
-                    photoUri: compressedUri,
-                  };
-                  setDetectedItems(updatedItems);
-                  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                }
-              } catch (error) {
-                console.error('Error selecting from gallery:', error);
-                Alert.alert('Error', 'Failed to select photo from gallery');
-              } finally {
-                setCroppingItemIndex(null);
-              }
-            },
-          },
-          {
-            text: 'Use Shelf Photo',
-            onPress: async () => {
-              try {
-                // Compress the shelf photo before using
-                const compressedUri = await compressForDisplay(capturedPhoto);
-                const updatedItems = [...detectedItems];
-                updatedItems[itemIndex] = {
-                  ...updatedItems[itemIndex],
-                  photoUri: compressedUri,
-                };
-                setDetectedItems(updatedItems);
-                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-              } catch (error) {
-                console.error('Error using shelf photo:', error);
-                Alert.alert('Error', 'Failed to use shelf photo');
-              } finally {
-                setCroppingItemIndex(null);
-              }
-            },
-          },
-          {
-            text: 'Cancel',
-            style: 'cancel',
-            onPress: () => setCroppingItemIndex(null),
-          },
-        ]
-      );
-    } catch (error) {
-      console.error('Error with photo options:', error);
-      Alert.alert('Error', 'Failed to open photo options');
-      setCroppingItemIndex(null);
-    }
-  };
-
   const handleConfirmItems = () => {
     if (detectedItems.length === 0) {
       Alert.alert('No Items', 'Please add at least one item');
@@ -916,27 +839,6 @@ export function MobileShelfAnalyzer({ visible, onClose, onItemsDetected }: Mobil
     setShowReceiptCamera(false);
   };
 
-  const handleCropComplete = async (croppedUri: string) => {
-    if (croppingItemIndex !== null) {
-      try {
-        const compressedUri = await compressForDisplay(croppedUri);
-        const updatedItems = [...detectedItems];
-        updatedItems[croppingItemIndex] = {
-          ...updatedItems[croppingItemIndex],
-          photoUri: compressedUri,
-        };
-        setDetectedItems(updatedItems);
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      } catch (error) {
-        console.error('Error processing cropped image:', error);
-        Alert.alert('Error', 'Failed to process cropped image');
-      }
-    }
-    setShowCropModal(false);
-    setCropSourceUri(null);
-    setCroppingItemIndex(null);
-  };
-
   const handleReceiptPhotoTaken = async (uri: string) => {
     try {
       const compressedUri = await compressForDisplay(uri);
@@ -949,9 +851,32 @@ export function MobileShelfAnalyzer({ visible, onClose, onItemsDetected }: Mobil
     }
   };
 
+  if (!visible) {
+    return null;
+  }
+
   if (!permission) {
     console.log('📸 Camera permission is null/loading');
-    return null;
+    return (
+      <Modal visible={visible} animationType="slide">
+        <View style={styles.container}>
+          <View style={styles.header}>
+            <TouchableOpacity onPress={handleCloseModal} style={styles.closeButton}>
+              <X color="#111827" size={24} />
+            </TouchableOpacity>
+            <Text style={styles.headerTitle}>Shelf Analyzer</Text>
+            <View style={{ width: 40 }} />
+          </View>
+          <View style={styles.permissionContainer}>
+            <Loader color="#111827" size={24} />
+            <Text style={styles.permissionText}>Preparing camera…</Text>
+            <Text style={styles.permissionSubtext}>
+              If this takes too long, close and reopen the scanner.
+            </Text>
+          </View>
+        </View>
+      </Modal>
+    );
   }
 
   if (!permission.granted) {
@@ -1099,8 +1024,6 @@ export function MobileShelfAnalyzer({ visible, onClose, onItemsDetected }: Mobil
                 onDelete={handleDeleteItem}
                 containers={containers}
                 locations={locations}
-                croppingItemIndex={croppingItemIndex}
-                onCropPhoto={handleCropPhoto}
                 onLoadContainersAndLocations={loadContainersAndLocations}
               />
             )}
@@ -1246,20 +1169,6 @@ export function MobileShelfAnalyzer({ visible, onClose, onItemsDetected }: Mobil
         </View>
       </Modal>
 
-      {/* Image Crop Modal */}
-      {cropSourceUri && (
-        <ImageCropModal
-          visible={showCropModal}
-          imageUri={cropSourceUri}
-          onClose={() => {
-            setShowCropModal(false);
-            setCropSourceUri(null);
-            setCroppingItemIndex(null);
-          }}
-          onCropComplete={handleCropComplete}
-          aspectRatio={[1, 1]}
-        />
-      )}
       {/* Live Barcode Scanner Fallback */}
       <MobileBarcodeScannerModal
         visible={showBarcodeScanner}
@@ -1325,6 +1234,12 @@ export function MobileShelfAnalyzer({ visible, onClose, onItemsDetected }: Mobil
           }
         }}
       />
+
+      <PaywallScreen 
+        visible={showPaywall} 
+        onClose={() => setShowPaywall(false)} 
+        reason="scan_limit"
+      />
     </Modal>
   );
 }
@@ -1338,8 +1253,6 @@ const ReviewItemCard = React.memo(function ReviewItemCard({
   onDelete,
   containers,
   locations,
-  croppingItemIndex,
-  onCropPhoto,
   onLoadContainersAndLocations,
 }: { 
   item: DetectedItem; 
@@ -1349,8 +1262,6 @@ const ReviewItemCard = React.memo(function ReviewItemCard({
   onDelete: (index: number) => void;
   containers: Array<{ id: string; name: string; location_id?: string | null }>;
   locations: Array<{ id: string; name: string }>;
-  croppingItemIndex: number | null;
-  onCropPhoto: (index: number) => void;
   onLoadContainersAndLocations: () => Promise<void>;
 }) {
   const [isEditing, setIsEditing] = useState(false);
@@ -1599,17 +1510,6 @@ const ReviewItemCard = React.memo(function ReviewItemCard({
                 </Text>
               </View>
               <View style={styles.reviewCardActions}>
-                <TouchableOpacity 
-                  onPress={() => onCropPhoto(index)} 
-                  style={styles.iconButton}
-                  disabled={croppingItemIndex === index}
-                >
-                  {croppingItemIndex === index ? (
-                    <Loader color="#10B981" size={16} />
-                  ) : (
-                    <Crop color="#10B981" size={16} />
-                  )}
-                </TouchableOpacity>
                 <TouchableOpacity onPress={() => setIsEditing(!isEditing)} style={styles.iconButton}>
                   <Edit2 color="#3B82F6" size={16} />
                 </TouchableOpacity>
@@ -1620,15 +1520,15 @@ const ReviewItemCard = React.memo(function ReviewItemCard({
             </View>
 
             {/* Item Details */}
-            <Text style={styles.reviewItemDetail} numberOfLines={1}>
+            <Text style={styles.reviewItemDetail}>
               <Text style={styles.detailLabel}>Brand: </Text>
               {item.brand || '—'}
             </Text>
-            <Text style={styles.reviewItemDetail} numberOfLines={1}>
+            <Text style={styles.reviewItemDetail}>
               <Text style={styles.detailLabel}>Category: </Text>
               {item.category || '—'}
             </Text>
-            <Text style={styles.reviewItemDetail} numberOfLines={2}>
+            <Text style={styles.reviewItemDetail}>
               <Text style={styles.detailLabel}>Description: </Text>
               {item.description || '—'}
             </Text>
@@ -2090,6 +1990,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#6b7280',
     textAlign: 'center',
+  },
+  permissionSubtext: {
+    fontSize: 12,
+    color: '#9CA3AF',
+    textAlign: 'center',
+    maxWidth: 280,
   },
   // Review Screen Styles
   reviewContainer: {

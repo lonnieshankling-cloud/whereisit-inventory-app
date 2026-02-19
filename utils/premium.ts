@@ -1,24 +1,30 @@
 /**
  * Premium Features Service
- * Manages premium status, feature gating, and purchase validation
+ * Manages premium status, feature gating, and purchase validation using RevenueCat
  */
 
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import Purchases, { PurchasesPackage } from 'react-native-purchases';
+import { Config } from '../config';
 
-const PREMIUM_KEY = '@whereisit_premium_status';
-const PREMIUM_PURCHASE_DATE_KEY = '@whereisit_premium_purchase_date';
+// Constants
+export const ENTITLEMENT_ID = Config.REVENUECAT_ENTITLEMENT_ID; // Must match RevenueCat Entitlement ID
 const FREE_ITEM_LIMIT = 100;
 
 export interface PremiumStatus {
   isPremium: boolean;
+  active: boolean; // Alias for UI compatibility
   purchaseDate?: string;
   itemLimit: number;
+  expirationDate?: string | null;
 }
 
 class PremiumService {
   private static instance: PremiumService;
-  private premiumStatus: boolean = false;
-
+  private isMockMode: boolean = false;
+  private mockIsPremium: boolean = false;
+  private listenerInitialized: boolean = false;
+  private statusSubscribers = new Set<(status: PremiumStatus) => void>();
+  
   private constructor() {}
 
   static getInstance(): PremiumService {
@@ -29,53 +35,188 @@ class PremiumService {
   }
 
   /**
-   * Initialize premium service and load status from storage
+   * Enable or disable mock mode for UI testing
+   */
+  setMockMode(enabled: boolean, isPremium: boolean = true) {
+    this.isMockMode = enabled;
+    this.mockIsPremium = isPremium;
+    console.log(`[Premium] Mock mode ${enabled ? 'ENABLED' : 'DISABLED'}. Status: ${isPremium ? 'Premium' : 'Free'}`);
+    this.notifySubscribers({
+      isPremium,
+      active: isPremium,
+      itemLimit: isPremium ? -1 : FREE_ITEM_LIMIT,
+      purchaseDate: isPremium ? new Date().toISOString() : undefined,
+      expirationDate: null,
+    });
+  }
+
+  private notifySubscribers(status: PremiumStatus) {
+    this.statusSubscribers.forEach((callback) => {
+      try {
+        callback(status);
+      } catch (error) {
+        console.warn('[Premium] Failed notifying subscriber', error);
+      }
+    });
+  }
+
+  subscribeStatus(callback: (status: PremiumStatus) => void): () => void {
+    this.statusSubscribers.add(callback);
+    return () => {
+      this.statusSubscribers.delete(callback);
+    };
+  }
+
+  /**
+   * Initialize premium service listeners (optional, SDK handles mostly)
    */
   async initialize(): Promise<void> {
+    if (this.listenerInitialized) {
+      return;
+    }
+
+    // RevenueCat is initialized in _layout.tsx
+    // We can add listener here if needed
+    Purchases.addCustomerInfoUpdateListener((info) => {
+      const entitlement = info.entitlements.active[ENTITLEMENT_ID];
+      const hasPro = !!entitlement;
+      if (__DEV__) {
+        console.log('[Premium] Customer info updated. Status:', hasPro ? 'Premium' : 'Free');
+      }
+
+      this.notifySubscribers({
+        isPremium: hasPro,
+        active: hasPro,
+        purchaseDate: entitlement?.latestPurchaseDate,
+        expirationDate: entitlement?.expirationDate,
+        itemLimit: hasPro ? -1 : FREE_ITEM_LIMIT,
+      });
+    });
+    this.listenerInitialized = true;
+    if (__DEV__) console.log('[Premium] Listener initialized');
+  }
+
+  /**
+   * Explicitly refresh customer info after purchase to ensure UI updates
+   */
+  async refreshCustomerInfo(): Promise<PremiumStatus> {
     try {
-      const status = await AsyncStorage.getItem(PREMIUM_KEY);
-      this.premiumStatus = status === 'true';
+      // Force sync with RevenueCat backend
+      await Purchases.syncPurchases();
+      const status = await this.getPremiumStatus();
+      this.notifySubscribers(status);
+      return status;
     } catch (error) {
-      console.error('Failed to load premium status:', error);
-      this.premiumStatus = false;
+      console.error('[Premium] Failed to refresh customer info', error);
+      const status = await this.getPremiumStatus();
+      this.notifySubscribers(status);
+      return status;
     }
   }
 
   /**
-   * Check if user has premium access
+   * Check if user has premium access via RevenueCat Entitlements
    */
   async isPremium(): Promise<boolean> {
+    if (this.isMockMode) {
+      return this.mockIsPremium;
+    }
+
     try {
-      const status = await AsyncStorage.getItem(PREMIUM_KEY);
-      this.premiumStatus = status === 'true';
-      return this.premiumStatus;
-    } catch (error) {
-      console.error('Failed to check premium status:', error);
+      const customerInfo = await Purchases.getCustomerInfo();
+      // Check for 'premium' entitlement
+      if (customerInfo.entitlements.active[ENTITLEMENT_ID]) {
+        return true;
+      }
+      return false;
+    } catch (error: any) {
+      // Suppress "no singleton" error which happens on app startup before init
+      if (error?.message && error.message.includes('There is no singleton instance')) {
+        return false;
+      }
+      console.warn('[Premium] Failed to check status, defaulting to false', error);
       return false;
     }
   }
 
   /**
-   * Get premium status with details
+   * Get formatted premium status
    */
   async getPremiumStatus(): Promise<PremiumStatus> {
-    const isPremium = await this.isPremium();
-    let purchaseDate: string | undefined;
-
-    if (isPremium) {
-      try {
-        const date = await AsyncStorage.getItem(PREMIUM_PURCHASE_DATE_KEY);
-        purchaseDate = date || undefined;
-      } catch (error) {
-        console.error('Failed to get purchase date:', error);
-      }
+    if (this.isMockMode) {
+      return {
+        isPremium: this.mockIsPremium,
+        active: this.mockIsPremium,
+        purchaseDate: this.mockIsPremium ? new Date().toISOString() : undefined,
+        expirationDate: null,
+        itemLimit: this.mockIsPremium ? -1 : FREE_ITEM_LIMIT,
+      };
     }
 
-    return {
-      isPremium,
-      purchaseDate,
-      itemLimit: isPremium ? -1 : FREE_ITEM_LIMIT, // -1 means unlimited
-    };
+    try {
+      const customerInfo = await Purchases.getCustomerInfo();
+      const entitlement = customerInfo.entitlements.active[ENTITLEMENT_ID];
+      const isPremium = !!entitlement;
+
+      return {
+        isPremium,
+        active: isPremium,
+        purchaseDate: entitlement?.latestPurchaseDate,
+        expirationDate: entitlement?.expirationDate,
+        itemLimit: isPremium ? -1 : FREE_ITEM_LIMIT,
+      };
+    } catch (error: any) {
+       // Suppress "no singleton" error which happens on app startup before init
+       if (error?.message && error.message.includes('There is no singleton instance')) {
+         return { isPremium: false, active: false, itemLimit: FREE_ITEM_LIMIT };
+       }
+       console.error('[Premium] Error getting detailed status', error);
+       return { isPremium: false, active: false, itemLimit: FREE_ITEM_LIMIT };
+    }
+  }
+
+  /**
+   * Get available packages (products) to display in Paywall
+   */
+  async getOfferings(): Promise<PurchasesPackage[]> {
+    try {
+      const offerings = await Purchases.getOfferings();
+      if (offerings.current && offerings.current.availablePackages.length !== 0) {
+        return offerings.current.availablePackages;
+      }
+      return [];
+    } catch (error) {
+      console.error('[Premium] Error fetching offerings', error);
+      return [];
+    }
+  }
+
+  /**
+   * Purchase a package
+   */
+  async purchasePackage(pack: PurchasesPackage): Promise<boolean> {
+    try {
+      const { customerInfo } = await Purchases.purchasePackage(pack);
+      return !!customerInfo.entitlements.active[ENTITLEMENT_ID];
+    } catch (error: any) {
+      if (!error.userCancelled) {
+        console.error('[Premium] Purchase failed', error);
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Restore purchases (e.g. on new device)
+   */
+  async restorePurchase(): Promise<boolean> {
+    try {
+      const customerInfo = await Purchases.restorePurchases();
+      return !!customerInfo.entitlements.active[ENTITLEMENT_ID];
+    } catch (error) {
+      console.error('[Premium] Restore failed', error);
+      return false;
+    }
   }
 
   /**
@@ -104,59 +245,23 @@ class PremiumService {
    * Check if user can access a premium feature
    */
   async canAccessFeature(feature: PremiumFeature): Promise<boolean> {
-    const isPremium = await this.isPremium();
-    
-    // Free features available to everyone
     if (PREMIUM_FEATURES[feature].free) {
       return true;
     }
-    
-    return isPremium;
-  }
-
-  /**
-   * Activate premium (for testing or after successful purchase)
-   */
-  async activatePremium(): Promise<void> {
-    try {
-      await AsyncStorage.setItem(PREMIUM_KEY, 'true');
-      await AsyncStorage.setItem(PREMIUM_PURCHASE_DATE_KEY, new Date().toISOString());
-      this.premiumStatus = true;
-      
-      if (__DEV__) {
-        console.log('💎 Premium activated');
-      }
-    } catch (error) {
-      console.error('Failed to activate premium:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Deactivate premium (for testing only)
-   */
-  async deactivatePremium(): Promise<void> {
-    try {
-      await AsyncStorage.removeItem(PREMIUM_KEY);
-      await AsyncStorage.removeItem(PREMIUM_PURCHASE_DATE_KEY);
-      this.premiumStatus = false;
-      
-      if (__DEV__) {
-        console.log('💎 Premium deactivated');
-      }
-    } catch (error) {
-      console.error('Failed to deactivate premium:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Restore premium purchase (from Play Store)
-   */
-  async restorePurchase(): Promise<boolean> {
-    // TODO: Implement Play Store purchase restoration
-    // For now, just check local storage
     return this.isPremium();
+  }
+
+  // --- Debug / Mock Methods ---
+  
+  async activatePremium(): Promise<void> {
+    // When in dev/mock mode, this can be used to toggle state
+    this.setMockMode(true, true);
+    console.log('[Premium] Activated Mock Premium');
+  }
+
+  async deactivatePremium(): Promise<void> {
+    this.setMockMode(true, false);
+    console.log('[Premium] Deactivated Mock Premium (Free Tier)');
   }
 }
 
@@ -164,6 +269,7 @@ class PremiumService {
 export type PremiumFeature = 
   | 'unlimited_items'
   | 'cloud_sync'
+  | 'ai_assistant'
   | 'advanced_analytics'
   | 'export_pdf'
   | 'export_csv'
@@ -189,6 +295,11 @@ export const PREMIUM_FEATURES: Record<PremiumFeature, FeatureInfo> = {
     name: 'Cloud Backup & Sync',
     description: 'Sync your data across devices',
     free: false,
+  },
+  ai_assistant: {
+    name: 'AI Assistant',
+    description: 'Unlimited AI shelf analysis (Free: 5/mo)',
+    free: false, 
   },
   advanced_analytics: {
     name: 'Advanced Analytics',
@@ -243,6 +354,11 @@ export const canAccessFeature = (feature: PremiumFeature) => Premium.canAccessFe
 export const activatePremium = () => Premium.activatePremium();
 export const deactivatePremium = () => Premium.deactivatePremium();
 export const getPremiumStatus = () => Premium.getPremiumStatus();
+export const restorePurchase = () => Premium.restorePurchase();
+export const initializePremium = () => Premium.initialize();
+export const refreshPremiumStatus = () => Premium.refreshCustomerInfo();
+export const subscribePremiumStatus = (callback: (status: PremiumStatus) => void) => Premium.subscribeStatus(callback);
 
 // Constants
 export { FREE_ITEM_LIMIT };
+

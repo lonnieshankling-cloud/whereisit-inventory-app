@@ -4,11 +4,12 @@
  */
 import * as ImageManipulator from 'expo-image-manipulator';
 import { Check, X } from 'lucide-react-native';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
     Dimensions,
     Modal,
+    PanResponder,
     Image as RNImage,
     StyleSheet,
     Text,
@@ -42,6 +43,10 @@ export function ImageCropModal({
     width: number;
     height: number;
   } | null>(null);
+  const cropStartRef = useRef<{ x: number; y: number; width: number; height: number } | null>(null);
+  const resizeStartRef = useRef<{ x: number; y: number; width: number; height: number } | null>(null);
+  const cropFrameRef = useRef<{ x: number; y: number; width: number; height: number } | null>(null);
+  const minCropSize = 60;
 
   // Get image dimensions for proper scaling
   useEffect(() => {
@@ -101,9 +106,8 @@ export function ImageCropModal({
   ) => {
     const cropAspectRatio = aspectRatio[0] / aspectRatio[1];
     
-    // Start with 70% of the smaller dimension to avoid phone gesture zones
-    // This keeps the crop frame away from screen edges
-    const maxSize = Math.min(scaledSize.width, scaledSize.height) * 0.7;
+    // Start with 98% of the smaller dimension to allow full-size crops
+    const maxSize = Math.min(scaledSize.width, scaledSize.height) * 0.98;
     
     let width = maxSize;
     let height = maxSize / cropAspectRatio;
@@ -118,6 +122,118 @@ export function ImageCropModal({
       height: Math.round(height),
     };
   };
+
+  useEffect(() => {
+    cropFrameRef.current = cropFrame;
+  }, [cropFrame]);
+
+  const clampCropFrame = (frame: { x: number; y: number; width: number; height: number }) => {
+    if (!scaledImageSize) return frame;
+
+    const clampedWidth = Math.max(minCropSize, Math.min(frame.width, scaledImageSize.width));
+    const clampedHeight = Math.max(minCropSize, Math.min(frame.height, scaledImageSize.height));
+
+    let x = Math.min(Math.max(frame.x, 0), scaledImageSize.width - clampedWidth);
+    let y = Math.min(Math.max(frame.y, 0), scaledImageSize.height - clampedHeight);
+
+    return {
+      x,
+      y,
+      width: clampedWidth,
+      height: clampedHeight,
+    };
+  };
+
+  const cropPanResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onPanResponderGrant: () => {
+        if (cropFrameRef.current) {
+          cropStartRef.current = { ...cropFrameRef.current };
+        }
+      },
+      onPanResponderMove: (_, gesture) => {
+        if (!cropStartRef.current) return;
+        const nextFrame = {
+          x: cropStartRef.current.x + gesture.dx,
+          y: cropStartRef.current.y + gesture.dy,
+          width: cropStartRef.current.width,
+          height: cropStartRef.current.height,
+        };
+        setCropFrame(clampCropFrame(nextFrame));
+      },
+      onPanResponderRelease: () => {
+        cropStartRef.current = null;
+      },
+    })
+  ).current;
+
+  const createResizeResponder = (corner: 'tl' | 'br') =>
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onStartShouldSetPanResponderCapture: () => true,
+      onMoveShouldSetPanResponderCapture: () => true,
+      onPanResponderGrant: () => {
+        if (cropFrameRef.current) {
+          resizeStartRef.current = { ...cropFrameRef.current };
+        }
+      },
+      onPanResponderMove: (_, gesture) => {
+        if (!resizeStartRef.current || !scaledImageSize) return;
+
+        const start = resizeStartRef.current;
+        const ratio = aspectRatio[0] / aspectRatio[1];
+
+        let width = start.width;
+        let height = start.height;
+        let x = start.x;
+        let y = start.y;
+
+        if (corner === 'br') {
+          width = Math.max(minCropSize, start.width + gesture.dx);
+          height = Math.round(width / ratio);
+
+          if (x + width > scaledImageSize.width) {
+            width = scaledImageSize.width - x;
+            height = Math.round(width / ratio);
+          }
+
+          if (y + height > scaledImageSize.height) {
+            height = scaledImageSize.height - y;
+            width = Math.round(height * ratio);
+          }
+        } else {
+          width = Math.max(minCropSize, start.width - gesture.dx);
+          height = Math.round(width / ratio);
+
+          x = start.x + (start.width - width);
+          y = start.y + (start.height - height);
+
+          if (x < 0) {
+            x = 0;
+            width = start.x + start.width;
+            height = Math.round(width / ratio);
+            y = start.y + (start.height - height);
+          }
+
+          if (y < 0) {
+            y = 0;
+            height = start.y + start.height;
+            width = Math.round(height * ratio);
+            x = start.x + (start.width - width);
+          }
+        }
+
+        const nextFrame = clampCropFrame({ x, y, width, height });
+        setCropFrame(nextFrame);
+      },
+      onPanResponderRelease: () => {
+        resizeStartRef.current = null;
+      },
+    });
+
+  const resizeTlResponder = useRef(createResizeResponder('tl')).current;
+  const resizeBrResponder = useRef(createResizeResponder('br')).current;
 
   const handleCrop = async () => {
     if (!imageSize || !scaledImageSize || !cropFrame) {
@@ -225,8 +341,11 @@ export function ImageCropModal({
                       height: cropFrame.height,
                     },
                   ]}
+                  {...cropPanResponder.panHandlers}
                 >
                   <View style={styles.cropBorder} />
+                  <View style={[styles.resizeHandle, styles.resizeHandleTopLeft]} {...resizeTlResponder.panHandlers} />
+                  <View style={[styles.resizeHandle, styles.resizeHandleBottomRight]} {...resizeBrResponder.panHandlers} />
                 </View>
               )}
 
@@ -244,6 +363,7 @@ export function ImageCropModal({
                         height: cropFrame.y,
                       },
                     ]}
+                    pointerEvents="none"
                   />
                   {/* Bottom */}
                   <View
@@ -256,6 +376,7 @@ export function ImageCropModal({
                         height: scaledImageSize.height - cropFrame.y - cropFrame.height,
                       },
                     ]}
+                    pointerEvents="none"
                   />
                   {/* Left */}
                   <View
@@ -268,6 +389,7 @@ export function ImageCropModal({
                         height: cropFrame.height,
                       },
                     ]}
+                    pointerEvents="none"
                   />
                   {/* Right */}
                   <View
@@ -280,6 +402,7 @@ export function ImageCropModal({
                         height: cropFrame.height,
                       },
                     ]}
+                    pointerEvents="none"
                   />
                 </>
               )}
@@ -340,11 +463,29 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: '#FACC15',
     borderStyle: 'dashed',
+    backgroundColor: 'transparent',
   },
   cropBorder: {
     flex: 1,
     borderWidth: 1,
     borderColor: '#fff',
+  },
+  resizeHandle: {
+    position: 'absolute',
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#FACC15',
+    borderWidth: 2,
+    borderColor: '#fff',
+  },
+  resizeHandleTopLeft: {
+    top: -12,
+    left: -12,
+  },
+  resizeHandleBottomRight: {
+    bottom: -12,
+    right: -12,
   },
   dimOverlay: {
     position: 'absolute',

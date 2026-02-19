@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Network from 'expo-network';
-import { Config } from '../config';
+import { getApiClient } from './api';
 import { databaseService, LocalShoppingItem } from './databaseService';
 
 const AUTH_TOKEN_KEY = '@whereisit_auth_token';
@@ -67,30 +67,21 @@ export class ShoppingListService {
       const token = await this.getAuthToken();
       if (token) {
         try {
-          const response = await fetch(`${Config.BACKEND_URL}/shopping`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({ itemName, quantity }),
-          });
+          const client = await getApiClient();
+          await client.shopping.add({ itemName, quantity });
 
-          if (response.ok) {
-            const backendItem: BackendShoppingItem = await response.json();
-            // Update local item with backend ID
-            const localItems = await databaseService.getShoppingList();
-            const localItem = localItems.find(
-              (item) =>
+          // Update local item as synced
+          const localItems = await databaseService.getShoppingList();
+          const localItem = localItems.find(
+            (item) =>
                 item.item_name === itemName &&
                 item.quantity === quantity &&
                 item.synced === 0
-            );
-            if (localItem) {
-              await databaseService.updateShoppingItem(localItem.id, {
+          );
+          if (localItem) {
+            await databaseService.updateShoppingItem(localItem.id, {
                 synced: 1,
-              });
-            }
+            });
           }
         } catch (error) {
           console.warn('Failed to sync add to backend:', error);
@@ -114,7 +105,8 @@ export class ShoppingListService {
       const token = await this.getAuthToken();
       if (token) {
         try {
-          const backendUpdates: any = {};
+          const client = await getApiClient();
+          const backendUpdates: any = { id: id as any };
           if (updates.quantity !== undefined) {
             backendUpdates.quantity = updates.quantity;
           }
@@ -123,18 +115,8 @@ export class ShoppingListService {
           }
 
           // Note: Using local ID for now - in production, need to map local to backend IDs
-          const response = await fetch(`${Config.BACKEND_URL}/shopping/${id}`, {
-            method: 'PATCH',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify(backendUpdates),
-          });
-
-          if (response.ok) {
-            await databaseService.updateShoppingItem(id, { synced: 1 });
-          }
+          await client.shopping.update(backendUpdates);
+          await databaseService.updateShoppingItem(id, { synced: 1 });
         } catch (error) {
           console.warn('Failed to sync update to backend:', error);
           // Continue - item is updated locally
@@ -152,12 +134,8 @@ export class ShoppingListService {
       const token = await this.getAuthToken();
       if (token) {
         try {
-          await fetch(`${Config.BACKEND_URL}/shopping/${id}`, {
-            method: 'DELETE',
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          });
+          const client = await getApiClient();
+          await client.shopping.deleteItem({ id: id as any });
         } catch (error) {
           console.warn('Failed to sync delete to backend:', error);
           // Continue with local deletion
@@ -180,18 +158,18 @@ export class ShoppingListService {
     if (await this.isOnline()) {
       const token = await this.getAuthToken();
       if (token) {
-        for (const item of purchasedItems) {
-          try {
-            await fetch(`${Config.BACKEND_URL}/shopping/${item.id}`, {
-              method: 'DELETE',
-              headers: {
-                Authorization: `Bearer ${token}`,
-              },
-            });
-          } catch (error) {
-            console.warn(`Failed to sync delete of item ${item.id}:`, error);
-            // Continue with local deletion
+        try {
+          const client = await getApiClient();
+          for (const item of purchasedItems) {
+            try {
+              await client.shopping.deleteItem({ id: item.id as any });
+            } catch (error) {
+              console.warn(`Failed to sync delete of item ${item.id}:`, error);
+              // Continue with local deletion
+            }
           }
+        } catch (error) {
+           console.warn(`Failed to initialize client for bulk delete:`, error);
         }
       }
     }
@@ -217,19 +195,9 @@ export class ShoppingListService {
     this.notifySyncListeners();
 
     try {
+      const client = await getApiClient();
       // Fetch all items from backend
-      const response = await fetch(`${Config.BACKEND_URL}/shopping`, {
-        method: 'GET',
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch shopping list from backend');
-      }
-
-      const data: { items: BackendShoppingItem[] } = await response.json();
+      const data = await client.shopping.list();
 
       // Get local items
       const localItems = await databaseService.getShoppingList();
@@ -280,23 +248,14 @@ export class ShoppingListService {
       for (const [_, localItem] of localItemsMap) {
         if (localItem.synced === 0) {
           try {
-            const response = await fetch(`${Config.BACKEND_URL}/shopping`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${token}`,
-              },
-              body: JSON.stringify({
+            await client.shopping.add({
                 itemName: localItem.item_name,
                 quantity: localItem.quantity,
-              }),
             });
 
-            if (response.ok) {
-              await databaseService.updateShoppingItem(localItem.id, {
-                synced: 1,
-              });
-            }
+            await databaseService.updateShoppingItem(localItem.id, {
+              synced: 1,
+            });
           } catch (error) {
             console.warn(`Failed to push local item ${localItem.id} to backend:`, error);
           }

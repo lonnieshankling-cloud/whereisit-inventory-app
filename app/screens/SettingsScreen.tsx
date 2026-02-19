@@ -1,23 +1,27 @@
 import { Analytics } from '@/utils/analytics';
-import { deactivatePremium, getPremiumStatus, PremiumStatus } from '@/utils/premium';
-import { useAuth } from '@clerk/clerk-expo';
+import { deactivatePremium, getPremiumStatus, PremiumStatus, refreshPremiumStatus, subscribePremiumStatus } from '@/utils/premium';
+import { useAuth, useUser } from '@clerk/clerk-expo';
+import * as FileSystem from 'expo-file-system';
+import * as Linking from 'expo-linking';
 import { useRouter } from 'expo-router';
-import { BarChart2, ChevronRight, Copy, Download, FileText, Info, LogOut, Mail, Moon, Shield, Trash2, UserPlus, Users, Vibrate, X } from 'lucide-react-native';
+import * as StoreReview from 'expo-store-review';
+import { ArrowUpDown, BarChart2, ChevronRight, Download, FileText, HelpCircle, Info, LogOut, Mail, Moon, Shield, Star, Trash2, UserPlus, Users, Vibrate, X } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 import {
     Alert,
     Appearance,
-    Clipboard,
+    Image,
     ScrollView,
     StyleSheet,
     Switch,
     Text,
     TextInput,
     TouchableOpacity,
-    View,
+    View
 } from 'react-native';
 import { clearAuthToken, householdApi, setAuthToken } from '../../services/api';
 import { databaseService } from '../../services/databaseService';
+import { generateInsuranceReport } from '../../services/reportService';
 import HouseholdManagementScreen from './HouseholdManagementScreen';
 import PaywallScreen from './PaywallScreen';
 
@@ -38,6 +42,7 @@ interface SettingsState {
 export default function SettingsScreen({ visible, onClose }: SettingsScreenProps) {
   const router = useRouter();
   const { isSignedIn, signOut, getToken } = useAuth();
+  const { user } = useUser();
   const [premiumStatus, setPremiumStatus] = useState<PremiumStatus | null>(null);
   const [showPaywall, setShowPaywall] = useState(false);
   const [showHouseholdManagement, setShowHouseholdManagement] = useState(false);
@@ -59,11 +64,30 @@ export default function SettingsScreen({ visible, onClose }: SettingsScreenProps
   const [authToken, setAuthTokenState] = useState<string | null>(null);
   const [authSyncing, setAuthSyncing] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
 
   useEffect(() => {
     if (visible) {
       loadSettings();
+      // Sync switch with current system appearance
+      const colorScheme = Appearance.getColorScheme();
+      setSettings(prev => ({ ...prev, darkMode: colorScheme === 'dark' }));
     }
+  }, [visible]);
+
+  useEffect(() => {
+    if (!visible) return;
+
+    const unsubscribe = subscribePremiumStatus((status) => {
+      setPremiumStatus(status);
+    });
+
+    // Force a fresh sync whenever settings opens
+    refreshPremiumStatus()
+      .then((status) => setPremiumStatus(status))
+      .catch((error) => console.warn('[Settings] Failed to refresh premium status', error));
+
+    return unsubscribe;
   }, [visible]);
 
   useEffect(() => {
@@ -150,7 +174,7 @@ export default function SettingsScreen({ visible, onClose }: SettingsScreenProps
       await loadHouseholdData();
     } catch (error) {
       console.error('Failed to create household:', error);
-      const msg = error?.message || error?.toString() || 'Unknown error';
+      const msg = (error as any)?.message || String(error) || 'Unknown error';
       Alert.alert('Error', `Failed to create household.\n\nDetails: ${msg}`);
     }
   };
@@ -176,7 +200,7 @@ export default function SettingsScreen({ visible, onClose }: SettingsScreenProps
       await loadHouseholdData();
     } catch (error) {
       console.error('Failed to join household:', error);
-      const msg = error?.message || error?.toString() || 'Unknown error';
+      const msg = (error as any)?.message || String(error) || 'Unknown error';
       Alert.alert('Error', `Failed to join household.\n\nDetails: ${msg}`);
     }
   };
@@ -237,22 +261,31 @@ export default function SettingsScreen({ visible, onClose }: SettingsScreenProps
     }
   };
 
-  const handleCopyToken = async () => {
-    if (!authToken) {
-      Alert.alert('No Token', 'No authentication token available. Try refreshing your session first.');
-      return;
-    }
+  const handleClearCache = async () => {
     try {
-      await Clipboard.setString(`Bearer ${authToken}`);
-      Alert.alert('Copied', 'Bearer token copied to clipboard');
+      const cacheDirectory = (FileSystem as any).cacheDirectory;
+      if (cacheDirectory) {
+        await FileSystem.deleteAsync(cacheDirectory, { idempotent: true });
+        Alert.alert('Success', 'Cache cleared successfully');
+      }
     } catch (error) {
-      console.error('Failed to copy token:', error);
-      Alert.alert('Error', 'Failed to copy token');
+      console.error('Failed to clear cache:', error);
+      Alert.alert('Error', 'Failed to clear cache');
     }
+  };
+  
+  const cycleSortOrder = () => {
+    // Placeholder for future implementation
+    Alert.alert('Sort Order', 'Default sort order feature coming soon!');
   };
 
   const updateSetting = (key: keyof SettingsState, value: any) => {
     setSettings(prev => ({ ...prev, [key]: value }));
+    
+    // Apply dark mode immediately
+    if (key === 'darkMode') {
+      Appearance.setColorScheme(value ? 'dark' : 'light');
+    }
   };
 
   const handleExportCSV = async () => {
@@ -281,16 +314,20 @@ export default function SettingsScreen({ visible, onClose }: SettingsScreenProps
   const handleExportPDF = () => {
     Alert.alert(
       'Export Insurance Report PDF',
-      'This will generate a PDF report of your items with photos for insurance purposes.',
+      'This will generate a PDF report of your items with photos for insurance purposes. This may take a few moments.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Generate PDF',
           onPress: async () => {
             try {
-              Alert.alert('Coming Soon', 'PDF export feature will be available in the next update.');
+              setIsGeneratingPDF(true);
+              await generateInsuranceReport();
             } catch (error) {
+              console.error(error);
               Alert.alert('Error', 'Failed to generate PDF');
+            } finally {
+              setIsGeneratingPDF(false);
             }
           },
         },
@@ -399,29 +436,30 @@ export default function SettingsScreen({ visible, onClose }: SettingsScreenProps
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Account</Text>
 
-            <View style={styles.settingItem}>
-              <View style={styles.settingLabel}>
-                <Shield color="#6B7280" size={20} />
-                <Text style={styles.settingText}>Clerk Session</Text>
+            <View style={styles.profileHeader}>
+              {user?.imageUrl ? (
+                <Image source={{ uri: user.imageUrl }} style={styles.avatar} />
+              ) : (
+                <View style={[styles.avatar, styles.avatarPlaceholder]}>
+                  <Text style={styles.avatarPlaceholderText}>
+                    {user?.fullName?.[0] || user?.primaryEmailAddress?.emailAddress?.[0] || '?'}
+                  </Text>
+                </View>
+              )}
+              <View style={styles.profileInfo}>
+                <Text style={styles.profileName}>{user?.fullName || 'User'}</Text>
+                <Text style={styles.profileEmail}>{user?.primaryEmailAddress?.emailAddress || 'Not signed in'}</Text>
+                <View style={[styles.badgeContainer, premiumStatus?.active ? styles.premiumBadge : styles.freeBadge]}>
+                  <Text style={[styles.badgeText, premiumStatus?.active ? styles.premiumText : styles.freeText]}>
+                    {premiumStatus?.active ? 'Premium' : 'Free Plan'}
+                  </Text>
+                </View>
               </View>
-              <Text style={styles.versionText}>
-                {isSignedIn ? 'Signed in' : 'Not signed in'}
-              </Text>
             </View>
 
             {authError ? (
               <Text style={[styles.versionText, { color: '#EF4444', marginTop: 4 }]}>{authError}</Text>
             ) : null}
-
-            {authToken ? (
-              <Text style={[styles.versionText, { color: '#10B981', marginTop: 4 }]}>
-                Session token cached
-              </Text>
-            ) : (
-              <Text style={[styles.versionText, { color: '#F59E0B', marginTop: 4 }]}>
-                No token cached
-              </Text>
-            )}
 
             <View style={styles.divider} />
 
@@ -434,26 +472,6 @@ export default function SettingsScreen({ visible, onClose }: SettingsScreenProps
                 {isSignedIn ? 'Sign Out' : 'Sign In'}
               </Text>
               <ChevronRight color={isSignedIn ? '#EF4444' : '#9CA3AF'} size={18} />
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.buttonItem} onPress={syncAuthToken}>
-              <Download color="#3B82F6" size={20} />
-              <Text style={styles.buttonText}>
-                {authSyncing ? 'Refreshing session…' : 'Refresh Session Token'}
-              </Text>
-              <ChevronRight color="#9CA3AF" size={18} />
-            </TouchableOpacity>
-
-            <TouchableOpacity 
-              style={styles.buttonItem} 
-              onPress={handleCopyToken}
-              disabled={!authToken}
-            >
-              <Copy color={authToken ? '#3B82F6' : '#D1D5DB'} size={20} />
-              <Text style={[styles.buttonText, !authToken ? styles.disabledText : null]}>
-                Copy Bearer Token
-              </Text>
-              <ChevronRight color={authToken ? '#9CA3AF' : '#D1D5DB'} size={18} />
             </TouchableOpacity>
           </View>
 
@@ -475,6 +493,18 @@ export default function SettingsScreen({ visible, onClose }: SettingsScreenProps
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>General</Text>
             
+            <View style={styles.settingItem}>
+              <View style={styles.settingLabel}>
+                <ArrowUpDown color="#6B7280" size={20} />
+                <Text style={styles.settingText}>Default Sort Order</Text>
+              </View>
+              <TouchableOpacity onPress={cycleSortOrder}>
+                <Text style={styles.valueText}>Date Added</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.divider} />
+
             <View style={styles.settingItem}>
               <View style={styles.settingLabel}>
                 <Moon color="#6B7280" size={20} />
@@ -511,6 +541,54 @@ export default function SettingsScreen({ visible, onClose }: SettingsScreenProps
                 <Text style={styles.selectorValue}>{settings.defaultCurrency}</Text>
                 <ChevronRight color="#9CA3AF" size={18} />
               </View>
+            </TouchableOpacity>
+          </View>
+
+
+          {/* Data Management */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Data Management</Text>
+            
+            <TouchableOpacity style={styles.buttonItem} onPress={handleExportCSV}>
+              <Download color="#6B7280" size={20} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.buttonText}>Export Data (CSV)</Text>
+              </View>
+              <ChevronRight color="#9CA3AF" size={18} />
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.buttonItem} onPress={handleClearCache}>
+              <Trash2 color="#6B7280" size={20} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.buttonText}>Clear Image Cache</Text>
+                <Text style={styles.settingDescription}>Free up space on your device</Text>
+              </View>
+              <ChevronRight color="#9CA3AF" size={18} />
+            </TouchableOpacity>
+          </View>
+
+          {/* Support */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Support</Text>
+            
+            <TouchableOpacity style={styles.buttonItem} onPress={() => Linking.openURL('https://docs.whereisit-app.com')}>
+              <HelpCircle color="#6B7280" size={20} />
+              <Text style={styles.buttonText}>Help Center</Text>
+              <ChevronRight color="#9CA3AF" size={18} />
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.buttonItem} onPress={async () => {
+              if (await StoreReview.hasAction()) StoreReview.requestReview();
+            }}>
+              <Star color="#6B7280" size={20} />
+              <Text style={styles.buttonText}>Rate the App</Text>
+              <ChevronRight color="#9CA3AF" size={18} />
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.buttonItem} onPress={() => Linking.openURL('https://whereisit-app.com/privacy')}>
+              <FileText color="#6B7280" size={20} />
+              <Text style={styles.buttonText}>Privacy Policy</Text>
+              <ChevronRight color="#9CA3AF" size={18} />
             </TouchableOpacity>
           </View>
 
@@ -698,6 +776,19 @@ export default function SettingsScreen({ visible, onClose }: SettingsScreenProps
               <View style={styles.settingLabel}>
                 <Shield color="#6B7280" size={20} />
                 <Text style={styles.settingText}>Privacy Policy</Text>
+              </View>
+              <ChevronRight color="#9CA3AF" size={18} />
+            </TouchableOpacity>
+
+            <View style={styles.divider} />
+
+            <TouchableOpacity 
+              style={styles.settingItem}
+              onPress={() => Alert.alert('Terms of Service', 'By using WhereIsIt Inventory, you agree to our Terms of Service.\n\nKey points:\n• Use the app for personal inventory management\n• Keep your account secure\n• Do not upload illegal content\n• We provide the app "as is"\n• Premium features via in-app purchase\n\nFull terms available in the app repository.')}
+            >
+              <View style={styles.settingLabel}>
+                <FileText color="#6B7280" size={20} />
+                <Text style={styles.settingText}>Terms of Service</Text>
               </View>
               <ChevronRight color="#9CA3AF" size={18} />
             </TouchableOpacity>
@@ -1003,6 +1094,78 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#FFFFFF',
   },
+  
+  // Profile & New Styles
+  profileHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  avatar: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+  },
+  avatarPlaceholder: {
+    backgroundColor: '#F3F4F6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarPlaceholderText: {
+    fontSize: 24,
+    fontWeight: '600',
+    color: '#6B7280',
+  },
+  profileInfo: {
+    marginLeft: 16,
+    flex: 1,
+  },
+  profileName: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#111827',
+    marginBottom: 2,
+  },
+  profileEmail: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginBottom: 6,
+  },
+  badgeContainer: {
+    backgroundColor: '#F3F4F6',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    alignSelf: 'flex-start',
+  },
+  premiumBadge: {
+    backgroundColor: '#DBEAFE',
+  },
+  freeBadge: {
+    backgroundColor: '#F3F4F6',
+  },
+  badgeText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#4B5563',
+  },
+  premiumText: {
+    color: '#2563EB',
+  },
+  freeText: {
+    color: '#4B5563',
+  },
+  valueText: {
+    fontSize: 16,
+    color: '#3B82F6',
+    fontWeight: '500',
+  },
+  settingDescription: {
+    fontSize: 13,
+    color: '#6B7280',
+    marginTop: 2,
+  },
+  
   modalContent: {
     backgroundColor: '#FFFFFF',
     borderRadius: 16,

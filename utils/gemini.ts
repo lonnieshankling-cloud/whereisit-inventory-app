@@ -4,7 +4,7 @@ import { Config } from '../config';
 /**
  * Generate a list of project requirements (tools/materials) using Gemini.
  */
-export async function generateProjectRequirements(projectTitle: string): Promise<string[]> {
+export async function generateProjectRequirements(projectTitle: string, description?: string): Promise<string[]> {
   const title = projectTitle?.trim();
   if (!title) return [];
 
@@ -16,8 +16,14 @@ export async function generateProjectRequirements(projectTitle: string): Promise
 
   try {
     const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
-    const prompt = `I am planning a project called '${title}'. Provide a strictly formatted JSON array of strings listing the essential tools and materials required. Do not include introductory text.`;
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+    
+    let promptContext = `I am planning a project called '${title}'.`;
+    if (description?.trim()) {
+      promptContext += ` Description: ${description.trim()}.`;
+    }
+
+    const prompt = `${promptContext} Provide a strictly formatted JSON array of strings listing the essential tools and materials required. Do not include introductory text.`;
 
     const result = await model.generateContent([{ text: prompt }]);
     const text = (await result.response).text();
@@ -43,5 +49,30 @@ export async function generateProjectRequirements(projectTitle: string): Promise
   } catch (error) {
     console.error('Failed to generate project requirements:', error);
     return [];
+  }
+}
+
+/**
+ * Generate a short description/purpose for an item using Gemini.
+ */
+export async function generateItemDescription(itemName: string): Promise<string> {
+  const name = itemName?.trim();
+  if (!name) return '';
+
+  const apiKey = Config.GEMINI_API_KEY;
+  if (!apiKey) return '';
+
+  try {
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+    
+    const prompt = `Provide a concise, 1-sentence description of the purpose of "${name}". Start directly with the description, no intro.`;
+
+    const result = await model.generateContent([{ text: prompt }]);
+    const response = await result.response;
+    return response.text().trim();
+  } catch (error) {
+    console.warn('Error generating item description:', error);
+    return '';
   }
 }

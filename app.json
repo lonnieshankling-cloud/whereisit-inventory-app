@@ -7,7 +7,6 @@
     "icon": "./assets/images/icon.png",
     "scheme": "whereisitmobile",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.whereisit.inventory",
@@ -32,7 +31,8 @@
         "CAMERA",
         "ACCESS_NETWORK_STATE",
         "com.android.vending.BILLING"
-      ]
+      ],
+      "softwareKeyboardLayoutMode": "resize"
     },
     "web": {
       "output": "static",
@@ -46,7 +46,7 @@
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 200,
           "resizeMode": "contain",
-          "backgroundColor": "#ffffff",
+          "backgroundColor": "#FACC15",
           "dark": {
             "backgroundColor": "#000000"
           }
@@ -61,7 +61,6 @@
         }
       ],
       "expo-sqlite",
-      "react-native-iap",
       "expo-secure-store",
       "expo-web-browser"
     ],

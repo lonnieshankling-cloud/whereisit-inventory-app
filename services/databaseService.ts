@@ -18,6 +18,7 @@ export interface LocalItem {
   purchase_price?: number;
   purchase_store?: string;
   warranty_months?: number;
+  warranty_date?: string;
   synced: number; // 0 = not synced, 1 = synced
   created_at: number;
   updated_at: number;
@@ -145,6 +146,7 @@ class DatabaseService {
         purchase_price REAL,
         purchase_store TEXT,
         warranty_months INTEGER,
+        warranty_date TEXT,
         synced INTEGER DEFAULT 0,
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL
@@ -182,6 +184,13 @@ class DatabaseService {
     // Add container_name column if it doesn't exist (migration)
     try {
       await this.db.execAsync('ALTER TABLE items ADD COLUMN container_name TEXT;');
+    } catch (error) {
+      // Column already exists, ignore error
+    }
+
+    // Add warranty_date column if it doesn't exist (migration)
+    try {
+      await this.db.execAsync('ALTER TABLE items ADD COLUMN warranty_date TEXT;');
     } catch (error) {
       // Column already exists, ignore error
     }
@@ -361,6 +370,17 @@ class DatabaseService {
 
   // ==================== ITEMS ====================
 
+  async getReceiptsForItem(itemId: string): Promise<LocalReceipt[]> {
+    if (!this.db) {
+       await this.initialize();
+    }
+    const result = await this.db!.getAllAsync<LocalReceipt>(
+      'SELECT * FROM receipts WHERE item_id = ?',
+      [itemId]
+    );
+    return result;
+  }
+
   async createItem(item: Omit<LocalItem, 'created_at' | 'updated_at'>): Promise<void> {
     if (!this.db) {
       console.error('Database not initialized in createItem');
@@ -375,8 +395,8 @@ class DatabaseService {
         `INSERT INTO items (
           id, name, description, category, location_id, container_id, photo_url, local_photo_uri,
           quantity, barcode, purchase_date, purchase_price, purchase_store,
-          warranty_months, synced, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          warranty_months, warranty_date, synced, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           item.id,
           item.name,
@@ -392,6 +412,7 @@ class DatabaseService {
           item.purchase_price || null,
           item.purchase_store || null,
           item.warranty_months || null,
+          item.warranty_date || null,
           item.synced,
           now,
           now,
@@ -486,6 +507,11 @@ class DatabaseService {
     if (!this.db) throw new Error('Database not initialized');
 
     await this.db.runAsync('DELETE FROM items WHERE id = ?', [id]);
+  }
+
+  async deleteAllItems(): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+    await this.db.runAsync('DELETE FROM items');
   }
 
   async getUnsyncedItems(): Promise<LocalItem[]> {
@@ -819,7 +845,7 @@ class DatabaseService {
     if (!this.db) throw new Error('Database not initialized');
     const now = Date.now();
     const fields = Object.keys(updates).filter(k => k !== 'id' && k !== 'created_at');
-    const values = fields.map(k => updates[k as keyof LocalProject]);
+    const values = fields.map(k => updates[k as keyof LocalProject] ?? null);
     const setClause = fields.map(f => `${f} = ?`).join(', ');
     
     await this.db.runAsync(
@@ -857,7 +883,7 @@ class DatabaseService {
     if (!this.db) throw new Error('Database not initialized');
     const now = Date.now();
     const fields = Object.keys(updates).filter(k => k !== 'id' && k !== 'created_at');
-    const values = fields.map(k => updates[k as keyof LocalProjectItem]);
+    const values = fields.map(k => updates[k as keyof LocalProjectItem] ?? null);
     const setClause = fields.map(f => `${f} = ?`).join(', ');
     
     await this.db.runAsync(

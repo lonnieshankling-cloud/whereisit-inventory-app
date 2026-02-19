@@ -200,3 +200,48 @@ export const householdApi = {
     return await client.household.rename({ name });
   },
 };
+
+/**
+ * Item API wrapper for inventory interactions
+ */
+export const itemApi = {
+  /**
+   * Look up an item by barcode
+   */
+  async lookup(barcode: string) {
+    const client = await getApiClient();
+    return await client.item.lookupBarcode({ upc: barcode });
+  },
+
+  /**
+   * List all items
+   */
+  async list() {
+    const client = await getApiClient();
+    return await client.item.search({ query: '' });
+  },
+
+  /**
+   * Create a new item
+   */
+  async create(data: { name: string; barcode?: string; description?: string; location_id?: number }) {
+    const client = await getApiClient();
+    return await client.item.create(data);
+  },
+
+  /**
+   * Update an item
+   */
+  async update(itemId: number, data: any) {
+    const client = await getApiClient();
+    return await client.item.update({ id: itemId, ...data });
+  },
+
+  /**
+   * Delete an item
+   */
+  async delete(itemId: number) {
+    const client = await getApiClient();
+    return await client.item.deleteItem({ id: itemId });
+  },
+};

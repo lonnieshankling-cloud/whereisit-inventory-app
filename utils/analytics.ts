@@ -5,6 +5,7 @@
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { isSameMonth, parseISO } from 'date-fns';
 
 const ANALYTICS_KEY = '@whereisit_analytics';
 const MAX_EVENTS = 1000; // Keep last 1000 events
@@ -28,6 +29,7 @@ export interface AnalyticsStats {
   firstUsed: string | null;
   lastUsed: string | null;
   daysActive: number;
+  aiScansThisMonth: number;
 }
 
 class AnalyticsService {
@@ -118,6 +120,13 @@ class AnalyticsService {
       daysActive = Math.ceil((last.getTime() - first.getTime()) / (1000 * 60 * 60 * 24));
     }
 
+    // Count AI scans in current month
+    const now = new Date();
+    const aiScansThisMonth = events.filter(e => 
+      e.event === 'ai_scan_performed' && 
+      isSameMonth(parseISO(e.timestamp), now)
+    ).length;
+
     return {
       totalEvents: events.length,
       itemsAdded,
@@ -131,6 +140,7 @@ class AnalyticsService {
       firstUsed,
       lastUsed,
       daysActive,
+      aiScansThisMonth,
     };
   }
 

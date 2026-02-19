@@ -61,11 +61,14 @@ This command will move the starter code to the **app-example** directory and cre
 
 ## Release checklist (Play Store)
 
+**Package Name:** `com.whereisit.inventory` ← Use this exact package name in Google Play Console (NOT a URL). See [GOOGLE_PLAY_PACKAGE_NAME.md](./GOOGLE_PLAY_PACKAGE_NAME.md) for details.
+
 - Set `EXPO_PUBLIC_BACKEND_URL` in `.env` to your public HTTPS backend (no localhost/LAN).
 - Bump `expo.version` and `expo.android.versionCode` in `app.json`.
 - Build a release: `eas build -p android --profile production` (or `npx expo run:android --variant release` if you prebuild).
 - Test the release build on-device: household flows, camera/photo, AI calls against the production backend.
 - Confirm icons/splash/name and privacy policy/Data Safety answers are ready for Play Console.
+- See [PLAY_STORE_LISTING.md](./PLAY_STORE_LISTING.md) for complete submission guide.
 
 To learn more about developing your project with Expo, look at the following resources:
 
