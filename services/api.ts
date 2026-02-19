@@ -10,7 +10,7 @@ import Client, { Environment } from '../frontend/client';
 const AUTH_TOKEN_KEY = '@whereisit_auth_token';
 
 // Determine which environment to use
-const getBaseURL = () => {
+export const getBaseURL = () => {
   const explicit = Config.BACKEND_URL?.trim();
   const isDevice = Platform.OS !== 'web';
 

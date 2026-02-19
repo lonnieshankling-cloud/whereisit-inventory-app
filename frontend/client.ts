@@ -1606,8 +1606,10 @@ export enum ErrCode {
 }
 
 const defaultTarget =
-    (typeof process !== "undefined" && (process.env?.VITE_CLIENT_TARGET ?? process.env?.EXPO_PUBLIC_BACKEND_URL))
-        ?? Environment("staging");
+    (typeof process !== "undefined"
+        ? (process.env?.VITE_CLIENT_TARGET ?? process.env?.EXPO_PUBLIC_BACKEND_URL)
+        : undefined)
+    ?? Environment("staging");
 
 export const defaultClient = new Client(defaultTarget, { requestInit: { credentials: "include" } });
 export default Client;

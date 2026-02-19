@@ -188,7 +188,10 @@ export function MobileShelfAnalyzer({ visible, onClose, onItemsDetected }: Mobil
       const { getAuthToken, getBaseURL } = await import('../services/api');
       const token = await getAuthToken();
       // Token stored in AsyncStorage already includes 'Bearer ' prefix (see app/_layout.tsx)
-      const authHeader = token ? { Authorization: token } : {};
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) {
+        headers.Authorization = token;
+      }
       if (!token) {
         console.warn('[Upload] No auth token found. Ensure you are signed in.');
       }
@@ -204,7 +207,7 @@ export function MobileShelfAnalyzer({ visible, onClose, onItemsDetected }: Mobil
       
       const response = await fetch(`${baseURL}/containers/upload-photo`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...authHeader },
+        headers,
         body: JSON.stringify({
           filename: `shelf-${Date.now()}.jpg`,
           contentType: 'image/jpeg',
@@ -418,9 +421,12 @@ export function MobileShelfAnalyzer({ visible, onClose, onItemsDetected }: Mobil
           const { getAuthToken } = await import('../services/api');
           const token = await getAuthToken();
           // Match generated client header semantics: raw token in 'authorization'
-          const authHeader = token ? { authorization: token } : {};
+          const lookupHeaders: Record<string, string> = {};
+          if (token) {
+            lookupHeaders.authorization = token;
+          }
           const lookupResponse = await fetch(`${Config.BACKEND_URL}/items/barcode/${upc}`, {
-            headers: { ...authHeader },
+            headers: lookupHeaders,
           });
 
           if (lookupResponse.ok) {
@@ -475,7 +481,7 @@ export function MobileShelfAnalyzer({ visible, onClose, onItemsDetected }: Mobil
     // Check quota for free users
     const hasPremium = await canAccessFeature('ai_assistant');
     if (!hasPremium) {
-       const stats = await Analytics.getStats('month');
+       const stats = await Analytics.getStats();
        if (stats.aiScansThisMonth >= 5) {
           setShowPaywall(true);
           return;
@@ -1191,10 +1197,13 @@ export function MobileShelfAnalyzer({ visible, onClose, onItemsDetected }: Mobil
               console.warn('[Scanner] Token refresh failed:', refreshErr);
             }
             // Match generated client header semantics: raw token in 'authorization'
-            const authHeader = token ? { authorization: token } : {};
+            const lookupHeaders: Record<string, string> = {};
+            if (token) {
+              lookupHeaders.authorization = token;
+            }
             console.log('[Scanner] Auth token present:', Boolean(token));
             const lookupResponse = await fetch(`${Config.BACKEND_URL}/items/barcode/${barcode}`, {
-              headers: { ...authHeader },
+              headers: lookupHeaders,
             });
             console.log('[Scanner] Lookup status:', lookupResponse.status);
             if (lookupResponse.status === 401) {
@@ -2699,48 +2708,6 @@ const styles = StyleSheet.create({
     color: '#9ca3af',
     marginTop: 2,
   },
-  detailLabel: {
-    fontWeight: '600',
-    color: '#374151',
-  },
-  confidenceText: {
-    fontSize: 12,
-    color: '#0891b2',
-    fontWeight: '500',
-    marginTop: 4,
-  },
-  reviewCardInfoColumn: {
-    flex: 1,
-    gap: 6,
-  },
-  itemNumberAndName: {
-    flex: 1,
-  },
-  pickerItemSelected: {
-    backgroundColor: '#dbeafe',
-  },
-  pickerItemTextSelected: {
-    color: '#1e40af',
-    fontWeight: '600',
-  },
-  selectionSection: {
-    gap: 8,
-  },
-  selectionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 12,
-    backgroundColor: '#f9fafb',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-    gap: 8,
-  },
-  selectionButtonText: {
-    flex: 1,
-    fontSize: 14,
-    color: '#374151',
-  },
   // Enriched product detail styles
   featuresContainer: {
     marginTop: 6,
@@ -2773,11 +2740,6 @@ const styles = StyleSheet.create({
   cameraWrapper: {
     flex: 1,
     position: 'relative',
-  },
-  cameraOverlay: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   receiptCameraWrapper: {
     flex: 1,

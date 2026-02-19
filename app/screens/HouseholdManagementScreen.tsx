@@ -72,12 +72,12 @@ export default function HouseholdManagementScreen({ visible, onClose }: Househol
         setCurrentUserId(householdData.current_user_id);
       }
       
-      setMembers(membersData.members.map(m => ({
+      setMembers(membersData.members.map((m: any) => ({
         ...m,
         email: m.id, // TODO: Get email from user service
       })) || []);
       
-      setPendingInvites(invitesData.invitations.map(inv => ({
+      setPendingInvites(invitesData.invitations.map((inv: any) => ({
         id: inv.id,
         email: inv.invited_email,
         invited_at: inv.created_at,

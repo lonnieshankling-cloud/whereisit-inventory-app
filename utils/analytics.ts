@@ -95,6 +95,7 @@ class AnalyticsService {
         firstUsed: null,
         lastUsed: null,
         daysActive: 0,
+        aiScansThisMonth: 0,
       };
     }
 
