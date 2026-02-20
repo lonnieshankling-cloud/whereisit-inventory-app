@@ -1,0 +1,86 @@
+name: TypeScript Typecheck
+
+on:
+  push:
+    branches:
+      - main
+      - 'fix/**'
+      - 'feature/**'
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  typecheck-backend:
+    name: Typecheck Backend
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Typecheck backend
+        run: npx tsc -p ./backend/tsconfig.json --noEmit
+
+  typecheck-app:
+    name: Typecheck Mobile App
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Typecheck app
+        run: npx tsc -p ./tsconfig.app.json --noEmit
+
+  typecheck-frontend:
+    name: Typecheck Frontend (Client)
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Typecheck frontend client
+        run: npx tsc -p ./frontend/tsconfig.json --noEmit
+
+  all-checks:
+    name: All TypeScript Checks
+    needs: [typecheck-backend, typecheck-app, typecheck-frontend]
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+      - name: Check all typechecks passed
+        run: |
+          if [[ "${{ needs.typecheck-backend.result }}" != "success" || 
+                "${{ needs.typecheck-app.result }}" != "success" ||
+                "${{ needs.typecheck-frontend.result }}" != "success" ]]; then
+            echo "❌ One or more TypeScript checks failed"
+            exit 1
+          fi
+          echo "✅ All TypeScript checks passed"
