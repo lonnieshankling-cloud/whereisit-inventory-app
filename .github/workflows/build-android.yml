@@ -53,29 +53,20 @@ jobs:
             --non-interactive \
             --wait
       
-      - name: Download build artifact
-        run: |
-          # EAS stores build artifacts; we download them for this workflow
-          mkdir -p ./build-artifacts
-          # The built APK/AAB is available via EAS dashboard
-          echo "Build completed. Check EAS Dashboard: https://expo.dev/projects/30985138-385a-403d-a952-9e215848faa0/builds"
-      
-      - name: Upload build to artifacts
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: android-build-${{ github.sha }}
-          path: ./build-artifacts/
-          retention-days: 30
-      
-      - name: Notify build status
+      - name: Build completed
         if: always()
         run: |
           if [ "${{ job.status }}" == "success" ]; then
             echo "✅ Android build succeeded"
-            echo "Build ID: ${{ github.run_id }}"
-            echo "Branch: ${{ github.ref_name }}"
-            echo "Commit: ${{ github.sha }}"
+            echo ""
+            echo "📦 Download your build from EAS Dashboard:"
+            echo "https://expo.dev/projects/30985138-385a-403d-a952-9e215848faa0/builds"
+            echo ""
+            echo "Build triggered from:"
+            echo "  Branch: ${{ github.ref_name }}"
+            echo "  Commit: ${{ github.sha }}"
+            echo "  Workflow: ${{ github.run_id }}"
           else
             echo "❌ Android build failed"
+            echo "Check logs above for details"
           fi
