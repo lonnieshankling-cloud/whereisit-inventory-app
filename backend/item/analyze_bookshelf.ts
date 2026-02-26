@@ -1,4 +1,3 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
 import { api, APIError } from "encore.dev/api";
 import { secret } from "encore.dev/config";
 import { getAuthData } from "~encore/auth";
@@ -22,10 +21,75 @@ interface AnalyzeBookshelfResponse {
 }
 
 const GOOGLE_MODEL_NAME = "gemini-2.5-flash";
+const GEMINI_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GOOGLE_MODEL_NAME}:generateContent`;
+const GEMINI_TIMEOUT_MS = 20000;
+const GEMINI_RETRIES = 3;
 
 // Helper function to convert ArrayBuffer to Base64
 function arrayBufferToBase64(buffer: ArrayBuffer) {
   return Buffer.from(buffer).toString('base64');
+}
+
+type GeminiPart =
+  | { text: string }
+  | { inline_data: { mime_type: string; data: string } };
+
+async function callGeminiWithRetry(parts: GeminiPart[], apiKey: string): Promise<string> {
+  let lastError = "Unknown Gemini error";
+
+  for (let attempt = 1; attempt <= GEMINI_RETRIES; attempt++) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), GEMINI_TIMEOUT_MS);
+
+    try {
+      const response = await fetch(GEMINI_ENDPOINT, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-goog-api-key": apiKey,
+        },
+        body: JSON.stringify({
+          contents: [{ role: "user", parts }],
+          generationConfig: {
+            responseMimeType: "application/json",
+          },
+        }),
+        signal: controller.signal,
+      });
+
+      const rawBody = await response.text();
+
+      if (!response.ok) {
+        lastError = `Gemini HTTP ${response.status}: ${rawBody.slice(0, 400)}`;
+        throw new Error(lastError);
+      }
+
+      const payload = JSON.parse(rawBody);
+      const textPart = payload?.candidates?.[0]?.content?.parts?.find(
+        (part: any) => typeof part?.text === "string"
+      );
+
+      if (!textPart?.text) {
+        lastError = `Gemini returned no text content: ${rawBody.slice(0, 400)}`;
+        throw new Error(lastError);
+      }
+
+      return textPart.text;
+    } catch (error: any) {
+      lastError =
+        error?.name === "AbortError"
+          ? `Gemini request timed out after ${GEMINI_TIMEOUT_MS}ms`
+          : error?.message || String(error);
+
+      if (attempt < GEMINI_RETRIES) {
+        await new Promise((resolve) => setTimeout(resolve, attempt * 750));
+      }
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  throw new Error(lastError);
 }
 
 export const analyzeBookshelf = api<AnalyzeBookshelfRequest, AnalyzeBookshelfResponse>({
@@ -79,7 +143,7 @@ Example response:
   }
 ]`;
 
-  const requestParts: any[] = [prompt];
+  const requestParts: GeminiPart[] = [{ text: prompt }];
 
   try {
     // Fetch each image, convert to base64, and add to request
@@ -100,8 +164,8 @@ Example response:
 
       // Add to request parts using inlineData
       requestParts.push({
-        inlineData: {
-          mimeType: mimeType,
+        inline_data: {
+          mime_type: mimeType,
           data: base64Data,
         },
       });
@@ -111,19 +175,9 @@ Example response:
     throw APIError.internal("Failed to read image from storage");
   }
 
-  // Use the Google Generative AI SDK
+  // Call Gemini API directly with retries for transient network issues
   try {
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ 
-      model: GOOGLE_MODEL_NAME,
-      generationConfig: {
-        responseMimeType: "application/json",
-      },
-    });
-
-    const result = await model.generateContent(requestParts);
-    const response = await result.response;
-    const jsonText = response.text();
+    const jsonText = await callGeminiWithRetry(requestParts, apiKey);
     const books = JSON.parse(jsonText);
 
     return { books };
