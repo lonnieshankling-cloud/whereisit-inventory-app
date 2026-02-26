@@ -1,6 +1,7 @@
 import { api, APIError } from "encore.dev/api";
 import { secret } from "encore.dev/config";
 import { getAuthData } from "~encore/auth";
+import { createHash } from "node:crypto";
 
 const geminiApiKey = secret("GeminiApiKey");
 
@@ -113,6 +114,9 @@ export const analyzeShelf = api<AnalyzeShelfRequest, AnalyzeShelfResponse>({
       "AI detection service not configured. Please set the GEMINI_API_KEY in Settings."
     );
   }
+
+  const keyFingerprint = createHash("sha256").update(apiKey).digest("hex").slice(0, 12);
+  console.log(`[Gemini] Using key fingerprint: ${keyFingerprint}`);
 
   // 1. Construct the prompt and image parts for the Google API
   const prompt = `You are a JSON-only API. You MUST respond with ONLY a valid JSON array of objects. For each item you see, return an object with "name", "description", "brand", "color", "size", "quantity", "expirationDate", "category", and "notes".

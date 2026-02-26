@@ -1,5 +1,9 @@
 ﻿import { ImageAnnotatorClient } from "@google-cloud/vision";
 import { api } from "encore.dev/api";
+import { secret } from "encore.dev/config";
+
+const googleVisionServiceAccountJson = secret("GoogleVisionServiceAccountJson");
+const googleVisionProjectId = secret("GoogleVisionProjectId");
 
 interface AnalyzeShelfRequest {
   imageUrl: string;
@@ -23,11 +27,44 @@ interface DetectedBarcode {
   rawValue?: string;
 }
 
+function createVisionClient(): ImageAnnotatorClient {
+  const serviceAccountJson = googleVisionServiceAccountJson();
+  const configuredProjectId = googleVisionProjectId();
+
+  if (serviceAccountJson) {
+    try {
+      const parsed = JSON.parse(serviceAccountJson) as {
+        client_email?: string;
+        private_key?: string;
+        project_id?: string;
+      };
+
+      if (parsed.client_email && parsed.private_key) {
+        return new ImageAnnotatorClient({
+          projectId: configuredProjectId || parsed.project_id,
+          credentials: {
+            client_email: parsed.client_email,
+            private_key: parsed.private_key.replace(/\\n/g, "\n"),
+          },
+        });
+      }
+    } catch (error) {
+      console.warn("[Vision API] Failed to parse GoogleVisionServiceAccountJson secret, falling back to default credentials");
+    }
+  }
+
+  if (configuredProjectId) {
+    return new ImageAnnotatorClient({ projectId: configuredProjectId });
+  }
+
+  return new ImageAnnotatorClient();
+}
+
 export const analyzeShelfOcr = api(
   { expose: true, method: "POST", path: "/item/analyze-shelf-ocr", auth: false },
   async ({ imageUrl }: AnalyzeShelfRequest): Promise<AnalyzeShelfResponse> => {
     try {
-      const client = new ImageAnnotatorClient();
+      const client = createVisionClient();
 
       const [result] = await client.annotateImage({
         image: { source: { imageUri: imageUrl } },
