@@ -4,7 +4,7 @@
   "type": "module",
   "packageManager": "bun",
   "scripts": {
-    "build": "cd .. && npm i --no-save @rollup/rollup-linux-x64-gnu && cd frontend && bun install && bunx vite build --outDir=../backend/frontend/dist",
+    "build": "echo BUILD_MARKER_2026_02_27_v3 && cd ../frontend && npm i --no-save @rollup/rollup-linux-x64-gnu && node -e \"require('@rollup/rollup-linux-x64-gnu'); console.log('ROLLUP_NATIVE_OK')\" && bun install && bunx vite build --outDir=../backend/frontend/dist",
     "test": "vitest"
   },
   "dependencies": {
