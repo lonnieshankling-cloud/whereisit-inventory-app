@@ -1,5 +1,4 @@
-import { api } from "encore.dev/api";
-import sharp from "sharp";
+import { api, APIError } from "encore.dev/api";
 import { getAuthData } from "~encore/auth";
 import { itemReceipts } from "../storage";
 
@@ -16,6 +15,16 @@ export const uploadReceipt = api(
   { expose: true, method: "POST", path: "/item/upload-receipt", auth: true },
   async ({ base64Image }: UploadReceiptRequest): Promise<UploadReceiptResponse> => {
     const authData = getAuthData()!;
+
+    // Lazy-load sharp so native binding issues don't crash service startup.
+    let sharp: any;
+    try {
+      const sharpModule = await import("sharp");
+      sharp = sharpModule.default;
+    } catch (error) {
+      console.error("[uploadReceipt] Failed to load sharp:", error);
+      throw APIError.unavailable("Image processing is temporarily unavailable");
+    }
 
     // Remove data:image prefix if present
     const base64Data = base64Image.replace(/^data:image\/\w+;base64,/, "");
