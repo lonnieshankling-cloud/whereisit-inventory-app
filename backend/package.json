@@ -4,7 +4,7 @@
   "type": "module",
   "packageManager": "bun",
   "scripts": {
-    "build": "cd ../frontend && bun install && npx vite build --outDir=../backend/frontend/dist",
+    "build": "cd ../frontend && bun install && bunx vite build --outDir=../backend/frontend/dist",
     "test": "vitest"
   },
   "dependencies": {
