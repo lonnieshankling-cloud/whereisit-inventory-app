@@ -2,7 +2,10 @@
 import { api } from "encore.dev/api";
 import { secret } from "encore.dev/config";
 
-const googleVisionServiceAccountJson = secret("GoogleVisionServiceAccountJson");
+// NOTE: Existing environments currently store this key with a typo:
+// GoogleViisionServiceAccountJson (double 'ii'). Keep using it for backward compatibility.
+// Optionally, a correctly named value can be provided via process.env.GoogleVisionServiceAccountJson.
+const googleVisionServiceAccountJsonLegacy = secret("GoogleViisionServiceAccountJson");
 const googleVisionProjectId = secret("GoogleVisionProjectId");
 
 interface AnalyzeShelfRequest {
@@ -28,7 +31,7 @@ interface DetectedBarcode {
 }
 
 function createVisionClient(): ImageAnnotatorClient {
-  const serviceAccountJson = googleVisionServiceAccountJson();
+  const serviceAccountJson = process.env.GoogleVisionServiceAccountJson || googleVisionServiceAccountJsonLegacy();
   const configuredProjectId = googleVisionProjectId();
 
   if (serviceAccountJson) {
@@ -49,7 +52,7 @@ function createVisionClient(): ImageAnnotatorClient {
         });
       }
     } catch (error) {
-      console.warn("[Vision API] Failed to parse GoogleVisionServiceAccountJson secret, falling back to default credentials");
+      console.warn("[Vision API] Failed to parse Vision service account JSON, falling back to default credentials");
     }
   }
 
