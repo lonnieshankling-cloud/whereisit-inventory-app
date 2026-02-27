@@ -4,7 +4,7 @@
   "type": "module",
   "packageManager": "bun",
   "scripts": {
-    "build": "cd ../frontend && bun install && npm i --no-save @rollup/rollup-linux-x64-gnu && bunx vite build --outDir=../backend/frontend/dist",
+    "build": "cd .. && npm i --no-save @rollup/rollup-linux-x64-gnu && cd frontend && bun install && bunx vite build --outDir=../backend/frontend/dist",
     "test": "vitest"
   },
   "dependencies": {
