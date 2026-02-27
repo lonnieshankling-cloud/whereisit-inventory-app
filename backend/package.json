@@ -4,7 +4,7 @@
   "type": "module",
   "packageManager": "bun",
   "scripts": {
-    "build": "echo BUILD_MARKER_2026_02_27_v4 && cd ../frontend && npm i --no-save --legacy-peer-deps @rollup/rollup-linux-x64-gnu && node -e \"require('@rollup/rollup-linux-x64-gnu'); console.log('ROLLUP_NATIVE_OK')\" && bun install && bunx vite build --outDir=../backend/frontend/dist",
+    "build": "echo BUILD_MARKER_2026_02_27_v5 && cd ../frontend && npm_config_legacy_peer_deps=true npm i --no-save @rollup/rollup-linux-x64-gnu && node -e \"require('@rollup/rollup-linux-x64-gnu'); console.log('ROLLUP_NATIVE_OK')\" && bun install && bunx vite build --outDir=../backend/frontend/dist",
     "test": "vitest"
   },
   "dependencies": {
