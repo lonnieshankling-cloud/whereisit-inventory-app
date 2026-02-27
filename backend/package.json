@@ -4,7 +4,7 @@
   "type": "module",
   "packageManager": "bun",
   "scripts": {
-    "build": "echo BUILD_MARKER_2026_02_27_v5 && cd ../frontend && npm_config_legacy_peer_deps=true npm i --no-save @rollup/rollup-linux-x64-gnu && node -e \"require('@rollup/rollup-linux-x64-gnu'); console.log('ROLLUP_NATIVE_OK')\" && bun install && bunx vite build --outDir=../backend/frontend/dist",
+    "build": "echo BUILD_MARKER_2026_02_27_v7 && cd ../frontend && node -e \"if(process.platform==='linux'){const cp=require('child_process');const r=cp.spawnSync('npm',['i','--no-save','--legacy-peer-deps','@rollup/rollup-linux-x64-gnu'],{stdio:'inherit'});if(r.status)process.exit(r.status);require('@rollup/rollup-linux-x64-gnu');console.log('ROLLUP_NATIVE_OK');}else{console.log('ROLLUP_NATIVE_SKIP_'+process.platform);}\" && bun install && bunx vite build --outDir=../backend/frontend/dist",
     "test": "vitest"
   },
   "dependencies": {
