@@ -5,24 +5,24 @@ import * as Haptics from 'expo-haptics';
 import { Camera, Check, ChevronDown, Edit2, Images, Loader, MapPin, Package, Plus, Trash2, X } from 'lucide-react-native';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-    Alert,
-    FlatList,
-    Image,
-    Modal,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View
+  Alert,
+  FlatList,
+  Image,
+  Modal,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
 } from 'react-native';
 import PaywallScreen from '../app/screens/PaywallScreen';
 import { Config } from '../config';
 import { databaseService } from '../services/databaseService';
 import { compressForBarcode, compressForDisplay } from '../services/imageCompression';
 import {
-    BoundingBox,
-    createThumbnail,
-    cropImageFromBoundingBox
+  BoundingBox,
+  createThumbnail,
+  cropImageFromBoundingBox
 } from '../services/imageViewerService';
 import { Analytics, logEvent } from '../utils/analytics';
 import { canAccessFeature } from '../utils/premium';
@@ -54,6 +54,21 @@ interface MobileShelfAnalyzerProps {
   visible: boolean;
   onClose: () => void;
   onItemsDetected: (items: DetectedItem[]) => void;
+}
+
+type ShelfStageStatus = 'success' | 'failed' | 'skipped';
+
+interface ShelfAnalysisDiagnostics {
+  backendBaseURL: string;
+  uploadStatus: ShelfStageStatus;
+  uploadError?: string;
+  ocrStatus: ShelfStageStatus;
+  ocrCount: number;
+  ocrError?: string;
+  geminiStatus: ShelfStageStatus;
+  geminiCount: number;
+  geminiError?: string;
+  geminiParseIssue?: string;
 }
 
 export function MobileShelfAnalyzer({ visible, onClose, onItemsDetected }: MobileShelfAnalyzerProps) {
@@ -180,12 +195,12 @@ export function MobileShelfAnalyzer({ visible, onClose, onItemsDetected }: Mobil
     }
   };
 
-  const uploadImageToBackend = async (base64Image: string): Promise<string> => {
+  const uploadImageToBackend = async (base64Image: string, baseURL: string): Promise<string> => {
     try {
       setAnalysisStep('Uploading image...');
 
       // Inject auth token for protected endpoint
-      const { getAuthToken, getBaseURL } = await import('../services/api');
+      const { getAuthToken } = await import('../services/api');
       const token = await getAuthToken();
       // Token stored in AsyncStorage already includes 'Bearer ' prefix (see app/_layout.tsx)
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -195,15 +210,6 @@ export function MobileShelfAnalyzer({ visible, onClose, onItemsDetected }: Mobil
       if (!token) {
         console.warn('[Upload] No auth token found. Ensure you are signed in.');
       }
-      
-      // Use proper base URL
-      const baseURL = await (async () => {
-        const explicit = Config.BACKEND_URL?.trim();
-        if (explicit) return explicit;
-        // Fallback to production environment
-        const { Environment } = await import('../frontend/client');
-        return Environment('production');
-      })();
       
       const response = await fetch(`${baseURL}/containers/upload-photo`, {
         method: 'POST',
@@ -228,37 +234,104 @@ export function MobileShelfAnalyzer({ visible, onClose, onItemsDetected }: Mobil
     }
   };
 
-  const analyzeWithBackendOCR = async (imageUrl: string): Promise<DetectedItem[]> => {
+  const analyzeWithBackendOCR = async (imageUrl: string, baseURL: string): Promise<{ items: DetectedItem[]; error?: string }> => {
     try {
       setAnalysisStep('Analyzing with OCR...');
       
-      const response = await fetch(`${Config.BACKEND_URL}/item/analyze-shelf-ocr`, {
+      const response = await fetch(`${baseURL}/item/analyze-shelf-ocr`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ imageUrl }),
       });
 
-      if (!response.ok) throw new Error(`OCR analysis failed: ${response.statusText}`);
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => '');
+        throw new Error(`OCR analysis failed: ${response.status} ${response.statusText || ''} ${errorText}`.trim());
+      }
       const data = await response.json();
       console.log('OCR found items:', data.items.length);
       console.log('Raw OCR text:', data.rawOcrText?.substring(0, 200));
       
-      return data.items || [];
+      return { items: data.items || [] };
     } catch (error) {
       console.error('Error with OCR analysis:', error);
-      return [];
+      const message = error instanceof Error ? error.message : 'Unknown OCR error';
+      return { items: [], error: message };
     }
   };
 
-  const enhanceWithGemini = async (base64Image: string, ocrItems: DetectedItem[]): Promise<DetectedItem[]> => {
+  const analyzeWithBackendGemini = async (
+    imageUrl: string,
+    ocrItems: DetectedItem[]
+  ): Promise<{ items: DetectedItem[]; error?: string }> => {
+    try {
+      setAnalysisStep('Analyzing with backend AI...');
+      const { getApiClient } = await import('../services/api');
+      const client = await getApiClient();
+      const response = await client.item.analyzeShelf({ imageUrls: [imageUrl] });
+
+      const backendItems = (response.items || []).map((item: any): DetectedItem => ({
+        name: item.name,
+        description: item.description || undefined,
+        brand: item.brand || undefined,
+        category: item.category || undefined,
+      }));
+
+      if (backendItems.length === 0 && ocrItems.length > 0) {
+        return { items: ocrItems };
+      }
+
+      // Merge OCR confidence/text hints when names match
+      const mergedItems: DetectedItem[] = backendItems.map((backendItem): DetectedItem => {
+        const ocrMatch = ocrItems.find((ocr) =>
+          ocr.name.toLowerCase().includes(backendItem.name.toLowerCase()) ||
+          backendItem.name.toLowerCase().includes(ocr.name.toLowerCase())
+        );
+
+        return {
+          ...backendItem,
+          extractedText: ocrMatch?.extractedText,
+          confidence: ocrMatch?.confidence,
+          brand: backendItem.brand || ocrMatch?.brand,
+          category: backendItem.category || ocrMatch?.category,
+        };
+      });
+
+      for (const ocrItem of ocrItems) {
+        const alreadyIncluded = mergedItems.some((item) =>
+          item.name.toLowerCase().includes(ocrItem.name.toLowerCase()) ||
+          ocrItem.name.toLowerCase().includes(item.name.toLowerCase())
+        );
+        if (!alreadyIncluded) mergedItems.push(ocrItem);
+      }
+
+      return { items: mergedItems };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown backend AI error';
+      console.error('Error with backend Gemini analysis:', error);
+      // Fallback to OCR items if backend AI fails
+      if (ocrItems.length > 0) {
+        return { items: ocrItems, error: message };
+      }
+      return { items: [], error: message };
+    }
+  };
+
+  const enhanceWithGemini = async (
+    base64Image: string,
+    ocrItems: DetectedItem[]
+  ): Promise<{ items: DetectedItem[]; error?: string; parseIssue?: string; keyPresent: boolean }> => {
     try {
       setAnalysisStep('Enhancing with Gemini AI...');
       
       const GEMINI_API_KEY = Config.GEMINI_API_KEY;
       if (!GEMINI_API_KEY) {
         console.warn('Gemini API key not found, skipping enhancement');
-        Alert.alert('Configuration Error', 'Gemini API key is missing. Check your .env.local file.');
-        return ocrItems;
+        return {
+          items: ocrItems,
+          error: 'Gemini API key missing in build environment',
+          keyPresent: false,
+        };
       }
 
       const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
@@ -292,7 +365,11 @@ export function MobileShelfAnalyzer({ visible, onClose, onItemsDetected }: Mobil
         } else {
           // No JSON found in response - Gemini declined or returned non-JSON text
           console.warn('[Gemini] No JSON array found in response, returning OCR items only');
-          return ocrItems;
+          return {
+            items: ocrItems,
+            parseIssue: 'Gemini response did not contain a JSON array',
+            keyPresent: true,
+          };
         }
       }
 
@@ -301,7 +378,12 @@ export function MobileShelfAnalyzer({ visible, onClose, onItemsDetected }: Mobil
         geminiItems = JSON.parse(jsonText);
       } catch (parseError) {
         console.warn('[Gemini] Failed to parse JSON response, returning OCR items only:', parseError);
-        return ocrItems;
+        return {
+          items: ocrItems,
+          parseIssue: 'Gemini JSON parsing failed',
+          error: parseError instanceof Error ? parseError.message : 'Unknown parse error',
+          keyPresent: true,
+        };
       }
       const mergedItems: DetectedItem[] = [];
       
@@ -329,10 +411,17 @@ export function MobileShelfAnalyzer({ visible, onClose, onItemsDetected }: Mobil
         if (!alreadyIncluded) mergedItems.push(ocrItem);
       }
 
-      return mergedItems;
+      return {
+        items: mergedItems,
+        keyPresent: true,
+      };
     } catch (error) {
       console.error('Error enhancing with Gemini:', error);
-      return ocrItems;
+      return {
+        items: ocrItems,
+        error: error instanceof Error ? error.message : 'Unknown Gemini error',
+        keyPresent: Boolean(Config.GEMINI_API_KEY),
+      };
     }
   };
 
@@ -662,61 +751,72 @@ export function MobileShelfAnalyzer({ visible, onClose, onItemsDetected }: Mobil
       }
 
       // ===== SHELF SCAN MODE (Full analysis, ~10-15 seconds) =====
-      // Check if backend is available (not localhost)
-      const isBackendAvailable = Config.BACKEND_URL && 
-                                  !Config.BACKEND_URL.includes('localhost') &&
-                                  !Config.BACKEND_URL.includes('127.0.0.1');
+      const { getBaseURL } = await import('../services/api');
+      const resolvedBaseURL = getBaseURL();
+      const isBackendAvailable = Boolean(resolvedBaseURL) &&
+        !resolvedBaseURL.includes('localhost') &&
+        !resolvedBaseURL.includes('127.0.0.1');
+
+      const diagnostics: ShelfAnalysisDiagnostics = {
+        backendBaseURL: resolvedBaseURL,
+        uploadStatus: 'skipped',
+        ocrStatus: 'skipped',
+        ocrCount: 0,
+        geminiStatus: 'skipped',
+        geminiCount: 0,
+      };
 
       let imageUrl: string | null = null;
       
       if (isBackendAvailable) {
         try {
-          imageUrl = await uploadImageToBackend(base64Image);
+          imageUrl = await uploadImageToBackend(base64Image, resolvedBaseURL);
+          diagnostics.uploadStatus = 'success';
           console.log('Image uploaded:', imageUrl);
         } catch (error) {
+          diagnostics.uploadStatus = 'failed';
+          diagnostics.uploadError = error instanceof Error ? error.message : 'Unknown upload error';
           console.warn('Backend upload failed, using Gemini only:', error);
         }
       } else {
+        diagnostics.uploadStatus = 'skipped';
+        diagnostics.uploadError = 'Backend URL unavailable or local-only';
         console.log('✨ Using Gemini AI for analysis (no backend needed)');
       }
 
-      // If backend upload failed or wasn't attempted, use Gemini only
+      // If backend upload failed or wasn't attempted, do not fallback to client-side Gemini.
+      // Backend Gemini (server-side key) is the source of truth in production/staging.
       if (!imageUrl) {
-        setAnalysisStep('Analyzing with Gemini AI...');
-        
-        const geminiItems = await enhanceWithGemini(base64Image, []);
-        
-        if (geminiItems.length === 0) {
-          Alert.alert(
-            'No Items Found', 
-            `Gemini AI: No items detected.\n\nChecks:\n✓ Gemini Key: ${Config.GEMINI_API_KEY ? 'Set' : 'MISSING'}\n✓ Backend: ${Config.BACKEND_URL || 'Not set (using Gemini only)'}\n\nTry another photo with better lighting and clear labels.`
-          );
-          setCapturedPhoto(null);
-          setIsAnalyzing(false);
-          setAnalysisStep('');
-          return;
-        }
-
-        // Log scan usage (counts against quota)
-        await logEvent('ai_scan_performed');
-
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        setDetectedItems(geminiItems);
-        setShowReview(true);
+        diagnostics.geminiStatus = 'skipped';
+        diagnostics.geminiError = 'Client-side Gemini fallback disabled';
+        Alert.alert(
+          'Upload Failed',
+          `Could not upload image for backend analysis.\n\nPipeline diagnostics:\n• Backend URL: ${diagnostics.backendBaseURL || 'Not resolved'}\n• Upload: ${diagnostics.uploadStatus}${diagnostics.uploadError ? ` (${diagnostics.uploadError})` : ''}\n• OCR: skipped\n• Gemini: skipped (backend-only mode)\n\nPlease confirm you are signed in and try again.`
+        );
+        setCapturedPhoto(null);
         setIsAnalyzing(false);
         setAnalysisStep('');
         return;
       }
 
-      const ocrItems = await analyzeWithBackendOCR(imageUrl);
+      const ocrResult = await analyzeWithBackendOCR(imageUrl, resolvedBaseURL);
+      const ocrItems = ocrResult.items;
+      diagnostics.ocrStatus = ocrResult.error ? 'failed' : 'success';
+      diagnostics.ocrCount = ocrItems.length;
+      diagnostics.ocrError = ocrResult.error;
       console.log('OCR found items:', ocrItems.length);
 
-      const finalItems = await enhanceWithGemini(base64Image, ocrItems);
+      const geminiResult = await analyzeWithBackendGemini(imageUrl, ocrItems);
+      const finalItems = geminiResult.items;
+      diagnostics.geminiStatus = finalItems.length > 0 ? 'success' : 'failed';
+      diagnostics.geminiCount = finalItems.length;
+      diagnostics.geminiError = geminiResult.error;
+      diagnostics.geminiParseIssue = undefined;
       
       if (finalItems.length === 0) {
         Alert.alert(
           'No Items Found', 
-          `No items detected after OCR + Gemini.\n\nDebug:\n✓ Backend: ${Config.BACKEND_URL}\n✓ OCR Items: ${ocrItems.length}\n✓ Gemini Key: ${Config.GEMINI_API_KEY ? 'Set' : 'MISSING'}\n\nTry another photo with better lighting.`
+          `No items detected after OCR + Gemini.\n\nPipeline diagnostics:\n• Backend URL: ${diagnostics.backendBaseURL}\n• Upload: ${diagnostics.uploadStatus}${diagnostics.uploadError ? ` (${diagnostics.uploadError})` : ''}\n• OCR: ${diagnostics.ocrStatus}, items=${diagnostics.ocrCount}${diagnostics.ocrError ? ` (${diagnostics.ocrError})` : ''}\n• Gemini: ${diagnostics.geminiStatus}, items=${diagnostics.geminiCount}${diagnostics.geminiError ? ` (${diagnostics.geminiError})` : ''}${diagnostics.geminiParseIssue ? `\n• Gemini Parse: ${diagnostics.geminiParseIssue}` : ''}\n\nTry a closer, better-lit photo with clear product labels.`
         );
         setCapturedPhoto(null);
         setIsAnalyzing(false);
